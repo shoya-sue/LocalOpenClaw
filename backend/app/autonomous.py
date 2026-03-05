@@ -1,0 +1,228 @@
+"""
+自律ループモジュール
+エージェントが自分たちで会話・判断・創作を行う
+
+フロー:
+  ループ開始 → Leaderがテーマ選択 → オーケストレーション →
+  出力からトリガーワード検出 → 次アクション自動実行 → 成果物ファイル生成
+"""
+
+import asyncio
+import logging
+import random
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+from app.llm.ollama import chat_complete
+
+logger = logging.getLogger("uvicorn.error")
+
+# ==============================
+# 自律ループ設定
+# ==============================
+
+# 1サイクルのインターバル（秒）。環境変数で上書き可能
+DEFAULT_INTERVAL = 180  # 3分
+
+# エージェントが使う厳選トリガーワード → (担当エージェント, 追加指示)
+TRIGGER_ACTIONS: dict[str, tuple[str, str]] = {
+    "調査開始":   ("detective",  "詳しく現地調査・情報収集を行いレポートを作成してください"),
+    "分析依頼":   ("researcher", "収集データを分析し、知見・仮説をまとめてください"),
+    "実装開始":   ("engineer",   "設計書またはコードのスケッチを作成してください"),
+    "提案作成":   ("sales",      "具体的な提案・アクションプランを作成してください"),
+    "要約依頼":   ("secretary",  "議論の内容を箇条書きで整理・要約してください"),
+    "問題発見":   ("detective",  "問題の根本原因を深掘りして調査してください"),
+    "成果物作成": ("engineer",   "議論の内容を元に具体的な成果物を作成してください"),
+    "次フェーズ": ("leader",     "現在の成果を踏まえて次のフェーズのテーマを決めてください"),
+}
+
+# Leaderが自律的に選ぶ議題リスト（ランダムローテーション）
+AUTONOMOUS_THEMES = [
+    (
+        "チームで今日取り組む最優先テーマを議論してください。"
+        "結論として『調査開始』『実装開始』『提案作成』のいずれかのキーワードで次のアクションを指示してください。"
+    ),
+    (
+        "LocalOpenClawシステムとして、AI同士が自律的に協働する仕組みの改善案を議論してください。"
+        "課題があれば『問題発見』、改善案は『提案作成』、実装するなら『実装開始』で指示してください。"
+    ),
+    (
+        "AI同士の協働で何か新しい成果物を作りましょう。テーマは自由に決めてください。"
+        "『調査開始』→『分析依頼』→『成果物作成』の順で役割を分担してください。"
+    ),
+    (
+        "チームの知識を結集して有益なレポートを自律作成してください。"
+        "まず『調査開始』で情報収集し、次に『分析依頼』で分析、最後に『要約依頼』でまとめてください。"
+    ),
+    (
+        "AI同士で短期プロジェクトを立ち上げてください。"
+        "プロジェクト名・目標・担当を決め、それぞれが『実装開始』『調査開始』などのキーワードで着手してください。"
+    ),
+]
+
+
+# ==============================
+# 自律ループクラス
+# ==============================
+
+class AutonomousLoop:
+    def __init__(self, orchestrator, ws_manager, output_dir: Path, interval: int = DEFAULT_INTERVAL):
+        self._orch = orchestrator
+        self._ws = ws_manager
+        self._output_dir = output_dir
+        self._interval = interval
+        self._task: Optional[asyncio.Task] = None
+        self._cycle = 0
+        self._running = False
+
+    def start(self):
+        self._running = True
+        self._task = asyncio.create_task(self._loop())
+        logger.info("autonomous: 自律ループ開始（インターバル %d秒）", self._interval)
+
+    def stop(self):
+        self._running = False
+        if self._task:
+            self._task.cancel()
+        logger.info("autonomous: 自律ループ停止")
+
+    @property
+    def status(self) -> dict:
+        return {
+            "running": self._running,
+            "cycle": self._cycle,
+            "interval_sec": self._interval,
+        }
+
+    # ==============================
+    # メインループ
+    # ==============================
+
+    async def _loop(self):
+        # 最初のサイクルは少し待ってから開始（起動直後の安定化）
+        await asyncio.sleep(10)
+        while self._running:
+            self._cycle += 1
+            theme = AUTONOMOUS_THEMES[(self._cycle - 1) % len(AUTONOMOUS_THEMES)]
+            logger.info("autonomous: サイクル %d 開始 — テーマ: %s", self._cycle, theme[:40])
+
+            await self._ws.broadcast({
+                "type": "autonomous_cycle_start",
+                "cycle": self._cycle,
+                "theme": theme,
+            })
+
+            try:
+                result = await self._orch.handle(theme)
+                await self._process_result(result, theme)
+            except Exception as exc:
+                logger.warning("autonomous: サイクル %d 失敗: %s", self._cycle, exc)
+
+            await asyncio.sleep(self._interval)
+
+    # ==============================
+    # 結果処理: トリガーワード検出 → チェーン実行 → 成果物保存
+    # ==============================
+
+    async def _process_result(self, result: dict, theme: str):
+        # メイン応答テキスト（leaderの統合回答）
+        main_text = result.get("response", "")
+        agent_results: dict[str, str] = result.get("agent_results", {})
+
+        # 全テキストを結合してトリガーワードを検索
+        all_text = main_text + "\n".join(agent_results.values())
+        triggered = self._detect_triggers(all_text)
+
+        chain_results: dict[str, str] = {}
+        for word, (agent_code, instruction) in triggered.items():
+            logger.info("autonomous: トリガー検出「%s」→ %s へ指示", word, agent_code)
+            await self._ws.broadcast({
+                "type": "autonomous_trigger",
+                "keyword": word,
+                "agent": agent_code,
+            })
+            chain_result = await self._run_agent_task(agent_code, instruction, context=main_text)
+            chain_results[f"{word}({agent_code})"] = chain_result
+
+        # 成果物ファイルを自動生成
+        await self._save_artifact(theme, result, chain_results)
+
+        await self._ws.broadcast({
+            "type": "autonomous_cycle_done",
+            "cycle": self._cycle,
+            "triggers_fired": list(triggered.keys()),
+        })
+
+    def _detect_triggers(self, text: str) -> dict[str, tuple[str, str]]:
+        """テキストからトリガーワードを検出。最初に見つかった2件まで"""
+        found: dict[str, tuple[str, str]] = {}
+        for word, action in TRIGGER_ACTIONS.items():
+            if word in text and word not in found:
+                found[word] = action
+            if len(found) >= 2:
+                break
+        return found
+
+    async def _run_agent_task(self, agent_code: str, instruction: str, context: str) -> str:
+        """特定エージェントに単独でタスクを実行させる"""
+        from app.agents.manager import AgentStatus
+        agent_data = self._orch.agents.get(agent_code)
+        if not agent_data:
+            return f"[エージェント '{agent_code}' が見つかりません]"
+
+        self._orch.agents.set_status(agent_code, AgentStatus.THINKING)
+        await self._ws.broadcast({
+            "type": "agent_status",
+            "agent": agent_code,
+            "status": AgentStatus.THINKING,
+            "detail": f"自律タスク: {instruction[:30]}",
+        })
+
+        system = agent_data.get("personality", f"あなたは{agent_code}です。")
+        prompt = f"【背景】\n{context[:500]}\n\n【指示】\n{instruction}"
+        result = await chat_complete(system, prompt)
+
+        self._orch.agents.set_status(agent_code, AgentStatus.IDLE)
+        await self._ws.broadcast({
+            "type": "agent_status",
+            "agent": agent_code,
+            "status": AgentStatus.IDLE,
+            "detail": "自律タスク完了",
+        })
+        return result
+
+    async def _save_artifact(self, theme: str, result: dict, chain_results: dict):
+        """議論の成果物をMarkdownファイルとして保存"""
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filepath = self._output_dir / f"cycle_{self._cycle:03d}_{timestamp}.md"
+
+        lines = [
+            f"# 自律サイクル {self._cycle} — {timestamp}",
+            "",
+            "## テーマ",
+            theme,
+            "",
+            "## Leaderの統合回答",
+            result.get("response", "（なし）"),
+            "",
+        ]
+
+        if result.get("agent_results"):
+            lines += ["## 各エージェントの報告", ""]
+            for agent, text in result["agent_results"].items():
+                lines += [f"### {agent}", text, ""]
+
+        if chain_results:
+            lines += ["## トリガーによる追加アクション", ""]
+            for key, text in chain_results.items():
+                lines += [f"### {key}", text, ""]
+
+        filepath.write_text("\n".join(lines), encoding="utf-8")
+        logger.info("autonomous: 成果物を保存 → %s", filepath)
+        await self._ws.broadcast({
+            "type": "autonomous_artifact",
+            "cycle": self._cycle,
+            "path": str(filepath),
+        })

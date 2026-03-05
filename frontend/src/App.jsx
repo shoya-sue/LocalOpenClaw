@@ -1,5 +1,5 @@
-// LocalOpenClaw フロントエンド Phase 3
-// Phaser.js ピクセルアートオフィス + React 操作パネル
+// LocalOpenClaw フロントエンド — 自律観察モード
+// AI同士の自律活動をリアルタイムで観察するview-only UI
 
 import { useEffect, useRef, useState } from 'react';
 import PhaserGame  from './game/PhaserGame.jsx';
@@ -11,14 +11,17 @@ const WS_URL      = import.meta.env.VITE_WS_URL      || 'ws://localhost:8080/ws'
 export default function App() {
   const [agents,        setAgents]        = useState([]);
   const [ollamaStatus,  setOllamaStatus]  = useState('確認中...');
-  const [messages,      setMessages]      = useState([]);
+  const [activities,    setActivities]    = useState([]);
   const [tasks,         setTasks]         = useState([]);
   const [agentStatuses, setAgentStatuses] = useState({});
   const [wsState,       setWsState]       = useState('接続中...');
-  const [mode,          setMode]          = useState('orchestrate');
-  const [selectedAgent, setSelectedAgent] = useState('leader');
 
   const wsRef = useRef(null);
+
+  // アクティビティフィードに追記
+  const addActivity = (activity) => {
+    setActivities(prev => [...prev, { ...activity, ts: Date.now() }]);
+  };
 
   // バックエンドのヘルスチェックとエージェント一覧取得
   useEffect(() => {
@@ -27,7 +30,6 @@ export default function App() {
       .then(data => {
         const list = data.agents || [];
         setAgents(list);
-        // 初期ステータスを idle で設定
         const init = {};
         list.forEach(a => { init[a.codename] = { status: 'idle', detail: '' }; });
         setAgentStatuses(init);
@@ -70,32 +72,15 @@ export default function App() {
 
   const handleWsEvent = (event) => {
     switch (event.type) {
-      case 'token':
-        // ストリーミングトークンを最後のメッセージに追記
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'assistant' && last.agent === event.agent) {
-            return [...prev.slice(0, -1), { ...last, content: last.content + event.content }];
-          }
-          return [...prev, { role: 'assistant', agent: event.agent, content: event.content }];
-        });
-        break;
-
-      case 'done':
-        setMessages(prev => {
-          const last = prev[prev.length - 1];
-          if (last?.role === 'assistant') {
-            return [...prev.slice(0, -1), { ...last, done: true }];
-          }
-          return prev;
-        });
-        break;
-
       case 'agent_status':
         setAgentStatuses(prev => ({
           ...prev,
           [event.agent]: { status: event.status, detail: event.detail || '' },
         }));
+        // 思考中になった場合のみフィードに記録（ノイズを減らす）
+        if (event.status === 'thinking' && event.detail) {
+          addActivity({ type: 'agent_thinking', agent: event.agent, detail: event.detail });
+        }
         break;
 
       case 'task_created':
@@ -105,6 +90,7 @@ export default function App() {
           title:  event.title,
           status: 'pending',
         }]);
+        addActivity({ type: 'task_created', agent: event.agent, title: event.title });
         break;
 
       case 'agent_thinking':
@@ -117,34 +103,34 @@ export default function App() {
         setTasks(prev => prev.map(t =>
           t.id === event.task_id ? { ...t, status: 'done', preview: event.preview } : t
         ));
+        addActivity({ type: 'task_done', agent: event.agent, preview: event.preview });
         break;
 
       case 'orchestration_result':
-        setMessages(prev => [
-          ...prev,
-          {
-            role:         'assistant',
-            agent:        'leader',
-            content:      event.response || event.error || '応答なし',
-            orchestration: event.orchestration,
-            reasoning:    event.reasoning,
-            done:         true,
-          },
-        ]);
+        addActivity({
+          type:      'orchestration_result',
+          agent:     'leader',
+          response:  event.response || event.error || '応答なし',
+          reasoning: event.reasoning,
+        });
         break;
-    }
-  };
 
-  const handleSend = (text) => {
-    if (!text || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+      case 'autonomous_cycle_start':
+        setTasks([]);  // 新サイクル開始でタスクをリセット
+        addActivity({ type: 'autonomous_cycle_start', cycle: event.cycle, theme: event.theme });
+        break;
 
-    setMessages(prev => [...prev, { role: 'user', content: text }]);
+      case 'autonomous_trigger':
+        addActivity({ type: 'autonomous_trigger', keyword: event.keyword, agent: event.agent });
+        break;
 
-    if (mode === 'orchestrate') {
-      wsRef.current.send(JSON.stringify({ type: 'orchestrate', message: text }));
-      setTasks([]);  // 新しい会話ではタスクをリセット
-    } else {
-      wsRef.current.send(JSON.stringify({ type: 'chat', agent: selectedAgent, message: text }));
+      case 'autonomous_cycle_done':
+        addActivity({ type: 'autonomous_cycle_done', cycle: event.cycle, triggers: event.triggers_fired });
+        break;
+
+      case 'autonomous_artifact':
+        addActivity({ type: 'autonomous_artifact', cycle: event.cycle, path: event.path });
+        break;
     }
   };
 
@@ -153,18 +139,13 @@ export default function App() {
       {/* Phaser.js キャンバス — ピクセルアートオフィス */}
       <PhaserGame agentStates={agentStatuses} />
 
-      {/* React 操作パネル */}
+      {/* 自律活動観察パネル */}
       <ControlPanel
         agents={agents}
-        messages={messages}
+        activities={activities}
         tasks={tasks}
         wsState={wsState}
         ollamaStatus={ollamaStatus}
-        mode={mode}
-        selectedAgent={selectedAgent}
-        onModeChange={setMode}
-        onAgentSelect={setSelectedAgent}
-        onSend={handleSend}
       />
     </div>
   );

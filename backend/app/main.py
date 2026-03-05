@@ -1,7 +1,7 @@
 """
-LocalOpenClaw バックエンド API v0.3.0
+LocalOpenClaw バックエンド API v0.4.0
 エージェント管理・タスク管理・オーケストレーション・WebSocket配信
-イベントドリブン自律動作: POST /webhook + data/ ディレクトリ watchdog
+完全自律動作: 自律ループ + トリガーワード連鎖 + 成果物自動生成
 """
 
 import asyncio
@@ -19,6 +19,7 @@ from watchdog.observers import Observer
 
 from app.agents.manager import AgentManager
 from app.agents.memory import append_memory, list_memory_files, read_memory, write_memory
+from app.autonomous import AutonomousLoop
 from app.llm.ollama import OLLAMA_BASE_URL, OLLAMA_MODEL, stream_chat
 from app.orchestrator import Orchestrator
 from app.tasks.manager import TaskManager
@@ -26,7 +27,7 @@ from app.ws.manager import ConnectionManager
 
 logger = logging.getLogger("uvicorn.error")
 
-app = FastAPI(title="LocalOpenClaw API", version="0.3.0")
+app = FastAPI(title="LocalOpenClaw API", version="0.4.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,6 +44,10 @@ agent_manager = AgentManager()
 task_manager = TaskManager()
 orchestrator = Orchestrator(agent_manager, task_manager, ws_manager)
 
+_AUTONOMOUS_INTERVAL = int(os.environ.get("AUTONOMOUS_INTERVAL", "180"))
+_OUTPUT_DIR = Path(os.environ.get("DATA_DIR", "/data")) / "output"
+autonomous_loop = AutonomousLoop(orchestrator, ws_manager, _OUTPUT_DIR, _AUTONOMOUS_INTERVAL)
+
 
 # ==============================
 # ヘルスチェック
@@ -53,9 +58,10 @@ async def health():
     """サービス稼働確認"""
     return {
         "status": "ok",
-        "version": "0.3.0",
+        "version": "0.4.0",
         "model": OLLAMA_MODEL,
         "ws_clients": ws_manager.client_count,
+        "autonomous": autonomous_loop.status,
     }
 
 
@@ -228,10 +234,9 @@ class _DataDirHandler(FileSystemEventHandler):
 
 
 @app.on_event("startup")
-async def _startup_watchdog():
-    """アプリ起動時に data/ 監視を開始する"""
+async def _startup():
+    """アプリ起動時に watchdog と自律ループを開始する"""
     # docker-compose で ./data:/data にマウントされているため /data を優先
-    # ローカル実行時は ./data にフォールバック
     data_dir = Path(os.environ.get("DATA_DIR", "/data"))
     data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -243,15 +248,44 @@ async def _startup_watchdog():
     app.state.watchdog = observer
     logger.info("watchdog: data/ ディレクトリの監視を開始しました")
 
+    autonomous_loop.start()
+
 
 @app.on_event("shutdown")
-async def _shutdown_watchdog():
-    """アプリ終了時に watchdog を停止する"""
+async def _shutdown():
+    """アプリ終了時に watchdog と自律ループを停止する"""
+    autonomous_loop.stop()
+
     observer: Observer | None = getattr(app.state, "watchdog", None)
     if observer:
         observer.stop()
         observer.join()
         logger.info("watchdog: 停止しました")
+
+
+# ==============================
+# 自律ループ制御
+# ==============================
+
+@app.get("/autonomous/status")
+async def autonomous_status():
+    """自律ループの稼働状態を返す"""
+    return autonomous_loop.status
+
+
+@app.post("/autonomous/start")
+async def autonomous_start():
+    """自律ループを手動起動する"""
+    if not autonomous_loop._running:
+        autonomous_loop.start()
+    return autonomous_loop.status
+
+
+@app.post("/autonomous/stop")
+async def autonomous_stop():
+    """自律ループを手動停止する"""
+    autonomous_loop.stop()
+    return autonomous_loop.status
 
 
 # ==============================
