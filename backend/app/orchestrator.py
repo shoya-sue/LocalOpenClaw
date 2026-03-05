@@ -72,7 +72,7 @@ class Orchestrator:
             return {"error": "Leader agent not found"}
 
         # ① Leaderがタスク分析
-        await self._set_status("leader", AgentStatus.THINKING)
+        await self._set_status("leader", AgentStatus.THINKING, "タスク分析中")
         system = _ORCHESTRATION_SYSTEM.format(name=leader.get("name", "リーダー"))
         plan_raw = await chat_complete(system, message)
         plan = self._parse_json(plan_raw)
@@ -83,7 +83,7 @@ class Orchestrator:
 
         # ② 直接回答の場合
         if not plan.get("tasks"):
-            await self._set_status("leader", AgentStatus.IDLE)
+            await self._set_status("leader", AgentStatus.IDLE, "待命中")
             return {
                 "orchestration": False,
                 "agent": "leader",
@@ -112,7 +112,7 @@ class Orchestrator:
                 "title": task.title,
             })
 
-        await self._set_status("leader", AgentStatus.IDLE)
+        await self._set_status("leader", AgentStatus.IDLE, "待命中")
 
         # ④ 各エージェントがタスクを実行（直列）
         results: dict[str, str] = {}
@@ -121,7 +121,7 @@ class Orchestrator:
             if not agent_data:
                 continue
 
-            await self._set_status(task.assigned_to, AgentStatus.THINKING)
+            await self._set_status(task.assigned_to, AgentStatus.THINKING, task.title)
             self.tasks.update_status(task.id, TaskStatus.IN_PROGRESS)
             await self.ws.broadcast({
                 "type": "agent_thinking",
@@ -134,7 +134,7 @@ class Orchestrator:
             results[task.assigned_to] = result
 
             self.tasks.update_status(task.id, TaskStatus.DONE, result)
-            await self._set_status(task.assigned_to, AgentStatus.IDLE)
+            await self._set_status(task.assigned_to, AgentStatus.IDLE, "作業完了")
             await self.ws.broadcast({
                 "type": "task_done",
                 "task_id": task.id,
@@ -145,7 +145,7 @@ class Orchestrator:
 
         # ⑤ Leaderが結果を統合
         if plan.get("summary_needed", True) and results:
-            await self._set_status("leader", AgentStatus.THINKING)
+            await self._set_status("leader", AgentStatus.THINKING, "統合・回答作成中")
             reports = "\n\n".join(
                 f"【{agent}の報告】\n{text}" for agent, text in results.items()
             )
@@ -154,7 +154,7 @@ class Orchestrator:
                 leader.get("personality", "あなたはリーダーです。"),
                 summary_prompt,
             )
-            await self._set_status("leader", AgentStatus.IDLE)
+            await self._set_status("leader", AgentStatus.IDLE, "待命中")
         else:
             final = "\n\n".join(
                 f"**{agent}**: {text}" for agent, text in results.items()
@@ -168,12 +168,13 @@ class Orchestrator:
             "agent_results": results,
         }
 
-    async def _set_status(self, codename: str, status: AgentStatus):
+    async def _set_status(self, codename: str, status: AgentStatus, detail: str = ""):
         self.agents.set_status(codename, status)
         await self.ws.broadcast({
             "type": "agent_status",
             "agent": codename,
             "status": status,
+            "detail": detail,
         })
 
     @staticmethod

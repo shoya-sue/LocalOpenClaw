@@ -1,13 +1,20 @@
 """
-LocalOpenClaw バックエンド API v0.2.0 (Phase 2)
+LocalOpenClaw バックエンド API v0.3.0
 エージェント管理・タスク管理・オーケストレーション・WebSocket配信
+イベントドリブン自律動作: POST /webhook + data/ ディレクトリ watchdog
 """
 
+import asyncio
+import logging
 import os
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 from app.agents.manager import AgentManager
 from app.agents.memory import append_memory, list_memory_files, read_memory, write_memory
@@ -16,7 +23,9 @@ from app.orchestrator import Orchestrator
 from app.tasks.manager import TaskManager
 from app.ws.manager import ConnectionManager
 
-app = FastAPI(title="LocalOpenClaw API", version="0.2.0")
+logger = logging.getLogger("uvicorn.error")
+
+app = FastAPI(title="LocalOpenClaw API", version="0.3.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,7 +52,7 @@ async def health():
     """サービス稼働確認"""
     return {
         "status": "ok",
-        "version": "0.2.0",
+        "version": "0.3.0",
         "model": OLLAMA_MODEL,
         "ws_clients": ws_manager.client_count,
     }
@@ -158,6 +167,80 @@ async def orchestrate(message: str):
     """Leaderがチームをオーケストレーションして回答（REST）"""
     result = await orchestrator.handle(message)
     return result
+
+
+# ==============================
+# Webhook（外部イベントからの自律起動）
+# ==============================
+
+class WebhookPayload(BaseModel):
+    message: str
+
+
+@app.post("/webhook")
+async def webhook(payload: WebhookPayload):
+    """外部トリガーからOrchestratorを起動する（CI/CD・cron・他サービス連携）"""
+    result = await orchestrator.handle(payload.message)
+    return result
+
+
+# ==============================
+# Watchdog（data/ ディレクトリ監視 → 自律動作）
+# ==============================
+
+class _DataDirHandler(FileSystemEventHandler):
+    """data/ 配下にファイルが作成・変更されたら内容をOrchestrator に投げる"""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, orch: Orchestrator):
+        self._loop = loop
+        self._orch = orch
+
+    def on_created(self, event):
+        if event.is_directory:
+            return
+        self._trigger(event.src_path)
+
+    def on_modified(self, event):
+        if event.is_directory:
+            return
+        self._trigger(event.src_path)
+
+    def _trigger(self, path: str):
+        try:
+            content = Path(path).read_text(encoding="utf-8").strip()
+            if not content:
+                return
+            logger.info("watchdog: %s → Orchestrator 起動", path)
+            asyncio.run_coroutine_threadsafe(self._orch.handle(content), self._loop)
+        except Exception as exc:
+            logger.warning("watchdog trigger failed: %s", exc)
+
+
+@app.on_event("startup")
+async def _startup_watchdog():
+    """アプリ起動時に data/ 監視を開始する"""
+    # docker-compose で ./data:/data にマウントされているため /data を優先
+    # ローカル実行時は ./data にフォールバック
+    data_dir = Path(os.environ.get("DATA_DIR", "/data"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    loop = asyncio.get_event_loop()
+    handler = _DataDirHandler(loop, orchestrator)
+    observer = Observer()
+    observer.schedule(handler, str(data_dir), recursive=False)
+    observer.start()
+    app.state.watchdog = observer
+    logger.info("watchdog: data/ ディレクトリの監視を開始しました")
+
+
+@app.on_event("shutdown")
+async def _shutdown_watchdog():
+    """アプリ終了時に watchdog を停止する"""
+    observer: Observer | None = getattr(app.state, "watchdog", None)
+    if observer:
+        observer.stop()
+        observer.join()
+        logger.info("watchdog: 停止しました")
 
 
 # ==============================

@@ -29,7 +29,7 @@ export default function App() {
         setAgents(list);
         // 初期ステータスを idle で設定
         const init = {};
-        list.forEach(a => { init[a.codename] = 'idle'; });
+        list.forEach(a => { init[a.codename] = { status: 'idle', detail: '' }; });
         setAgentStatuses(init);
       })
       .catch(() => setAgents([]));
@@ -92,7 +92,10 @@ export default function App() {
         break;
 
       case 'agent_status':
-        setAgentStatuses(prev => ({ ...prev, [event.agent]: event.status }));
+        setAgentStatuses(prev => ({
+          ...prev,
+          [event.agent]: { status: event.status, detail: event.detail || '' },
+        }));
         break;
 
       case 'task_created':

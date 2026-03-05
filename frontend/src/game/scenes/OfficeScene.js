@@ -139,23 +139,32 @@ export default class OfficeScene extends Phaser.Scene {
       errorOverlay, desk, character,
       nameText, statusText, bubbleText,
       currentState: 'idle',
+      currentDetail: '',
     };
   }
 
-  // React側からエージェント状態を受け取る
+  // React側からエージェント状態を受け取る（{status, detail} または文字列を受け付ける）
   updateAgentStates(states) {
     this.agentStates = states || {};
     Object.entries(this.agentObjects).forEach(([id, obj]) => {
-      const state = this.agentStates[id] || 'idle';
+      const raw = this.agentStates[id] || 'idle';
+      // {status, detail} オブジェクトと文字列の両方に対応
+      const state  = typeof raw === 'object' ? (raw.status || 'idle') : raw;
+      const detail = typeof raw === 'object' ? (raw.detail || '')     : '';
+
       if (state !== obj.currentState) {
-        this._applyState(obj, state);
-        obj.currentState = state;
+        this._applyState(obj, state, detail);
+        obj.currentState  = state;
+        obj.currentDetail = detail;
+      } else if (detail !== obj.currentDetail) {
+        // 状態は同じだが detail だけ変化した場合
+        obj.currentDetail = detail;
       }
     });
   }
 
   // 状態に応じてビジュアルを切り替える
-  _applyState(obj, state) {
+  _applyState(obj, state, detail = '') {
     const { character, statusText, bubbleText, errorOverlay, cx, cy } = obj;
 
     // 既存のtweenをリセット
@@ -221,13 +230,13 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   update() {
-    // thinking状態のドットアニメーション（毎フレーム更新）
+    // thinking状態の表示更新（detail があれば表示、なければドットアニメーション）
     const dotCount = 1 + (Math.floor(this.time.now / 380) % 3);
     const dots = '.'.repeat(dotCount);
 
     Object.values(this.agentObjects).forEach(obj => {
       if (obj.currentState === 'thinking') {
-        obj.bubbleText.setText(dots);
+        obj.bubbleText.setText(obj.currentDetail || dots);
       }
     });
   }
