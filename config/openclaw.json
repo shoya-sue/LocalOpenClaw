@@ -1,0 +1,77 @@
+{
+  "version": "1.0.0",
+  "project": "LocalOpenClaw",
+
+  "llm": {
+    "provider": "ollama",
+    "baseUrl": "http://ollama:11434",
+    "model": "qwen2.5:14b",
+    "contextWindow": 65536,
+    "temperature": 0.7,
+    "streamingEnabled": true
+  },
+
+  "agents": [
+    {
+      "codename": "leader",
+      "configFile": "/app/config/agents/leader.yaml",
+      "enabled": true,
+      "autoStart": true
+    },
+    {
+      "codename": "detective",
+      "configFile": "/app/config/agents/detective.yaml",
+      "enabled": true,
+      "autoStart": true
+    },
+    {
+      "codename": "engineer",
+      "configFile": "/app/config/agents/engineer.yaml",
+      "enabled": true,
+      "autoStart": true
+    },
+    {
+      "codename": "researcher",
+      "configFile": "/app/config/agents/researcher.yaml",
+      "enabled": false,
+      "autoStart": false,
+      "note": "Phase 4 で有効化"
+    },
+    {
+      "codename": "sales",
+      "configFile": "/app/config/agents/sales.yaml",
+      "enabled": false,
+      "autoStart": false,
+      "note": "Phase 4 で有効化"
+    },
+    {
+      "codename": "secretary",
+      "configFile": "/app/config/agents/secretary.yaml",
+      "enabled": false,
+      "autoStart": false,
+      "note": "Phase 4 で有効化"
+    }
+  ],
+
+  "memory": {
+    "basePath": "/workspace",
+    "backupEnabled": true,
+    "backupInterval": "0 3 * * *"
+  },
+
+  "mcp": {
+    "servers": [
+      {
+        "name": "filesystem",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/data/processed"],
+        "description": "処理済みデータへのファイルアクセス"
+      }
+    ]
+  },
+
+  "gateway": {
+    "channels": ["cli"],
+    "cliEnabled": true
+  }
+}

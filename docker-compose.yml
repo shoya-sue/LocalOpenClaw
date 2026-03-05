@@ -1,0 +1,97 @@
+services:
+  # ==============================
+  # Ollama - ローカルLLMランタイム
+  # Phase 1 から起動
+  # ==============================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: local-openclaw-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      # モデルデータを永続化（再起動後も再ダウンロード不要）
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h     # モデルをメモリに保持する時間
+      - OLLAMA_NUM_PARALLEL=2     # 並列リクエスト数（マルチエージェント用）
+    restart: unless-stopped
+    # Apple Silicon: Metal GPU加速が自動有効化される
+
+  # ==============================
+  # ChromaDB - ベクトルDB（RAG用）
+  # Phase 1 から起動
+  # ==============================
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: local-openclaw-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - chromadb_data:/chroma/chroma
+    restart: unless-stopped
+
+  # ==============================
+  # バックエンドAPI - エージェント基盤
+  # Phase 2 から起動: docker compose --profile phase2 up
+  # ==============================
+  backend:
+    profiles: ["phase2", "phase3"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: local-openclaw-backend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./backend:/app
+      - ./config:/app/config:ro        # エージェント定義（読み取り専用）
+      - ./data:/data
+      - agent_memory:/workspace        # エージェントメモリ（永続化）
+    environment:
+      - CHROMADB_URL=http://chromadb:8000
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:1.7b}
+      - AGENT_MEMORY_PATH=/workspace
+    depends_on:
+      - chromadb
+      - ollama
+    restart: unless-stopped
+
+  # ==============================
+  # フロントエンド - ピクセルアートUI
+  # Phase 3 から起動: docker compose --profile phase3 up
+  # ==============================
+  frontend:
+    profiles: ["phase3"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: local-openclaw-ui
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_BACKEND_URL=http://localhost:8080
+      - VITE_WS_URL=ws://localhost:8080/ws
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+# ==============================
+# ボリューム定義（永続化）
+# ==============================
+volumes:
+  ollama_data:
+    name: local-openclaw-ollama-data
+    # Ollamaのモデルデータ。削除するとモデルの再ダウンロードが必要
+
+  agent_memory:
+    name: local-openclaw-agent-memory
+    # 全エージェントのメモリ・経験が格納される最重要ボリューム
+    # 絶対に削除しないこと！削除するとエージェントの記憶が全消去される
+
+  chromadb_data:
+    name: local-openclaw-chromadb
+    # ベクトルDBのデータ。削除するとRAGデータの再投入が必要

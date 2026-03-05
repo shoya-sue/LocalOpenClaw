@@ -1,0 +1,63 @@
+# ===========================
+# Python
+# ===========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.coverage
+htmlcov/
+
+# ===========================
+# Node.js / フロントエンド
+# ===========================
+node_modules/
+frontend/dist/
+frontend/.vite/
+.npm/
+
+# ===========================
+# 環境設定
+# ===========================
+.env
+.env.local
+.env.*.local
+.env.production
+*.secret
+
+# ===========================
+# データ・ログ（大容量 / 生成物）
+# ===========================
+data/raw/
+data/processed/
+logs/
+
+# ===========================
+# Docker ボリューム・キャッシュ
+# ===========================
+.docker/
+
+# ===========================
+# OS / エディタ
+# ===========================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ===========================
+# Ollama モデルキャッシュ（ローカル）
+# ===========================
+.ollama/
