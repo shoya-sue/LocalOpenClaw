@@ -7,6 +7,7 @@ LocalOpenClaw バックエンド API v0.3.0
 import asyncio
 import logging
 import os
+import time
 from pathlib import Path
 
 import httpx
@@ -188,12 +189,17 @@ async def webhook(payload: WebhookPayload):
 # Watchdog（data/ ディレクトリ監視 → 自律動作）
 # ==============================
 
+_DEBOUNCE_SEC = 2.0  # 同一ファイルの連続イベントを無視する秒数
+
+
 class _DataDirHandler(FileSystemEventHandler):
     """data/ 配下にファイルが作成・変更されたら内容をOrchestrator に投げる"""
 
     def __init__(self, loop: asyncio.AbstractEventLoop, orch: Orchestrator):
         self._loop = loop
         self._orch = orch
+        # {path: last_trigger_time} — デバウンス用
+        self._last_triggered: dict[str, float] = {}
 
     def on_created(self, event):
         if event.is_directory:
@@ -206,6 +212,11 @@ class _DataDirHandler(FileSystemEventHandler):
         self._trigger(event.src_path)
 
     def _trigger(self, path: str):
+        now = time.monotonic()
+        # デバウンス: 同一ファイルが _DEBOUNCE_SEC 以内に再トリガーされたら無視
+        if now - self._last_triggered.get(path, 0) < _DEBOUNCE_SEC:
+            return
+        self._last_triggered[path] = now
         try:
             content = Path(path).read_text(encoding="utf-8").strip()
             if not content:
