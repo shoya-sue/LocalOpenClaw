@@ -8,9 +8,11 @@
 """
 
 import asyncio
+import json
 import logging
 import os
 import random
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -36,44 +38,97 @@ DEFAULT_INTERVAL = 180  # 3分
 TRIGGER_ACTIONS: dict[str, tuple[str, str]] = {
     "調査開始":   ("detective",  "詳しく現地調査・情報収集を行いレポートを作成してください"),
     "分析依頼":   ("researcher", "収集データを分析し、知見・仮説をまとめてください"),
-    "実装開始":   ("engineer",   "設計書またはコードのスケッチを作成してください"),
+    "JSON出力":   ("engineer",   "議論の内容をJSON形式でフォーマットしてください。フィールド: title, platform, target_audience, hook(冒頭3秒のセリフ), script(秒単位の配列: time/visual/narration), cta, hashtags"),
     "提案作成":   ("sales",      "具体的な提案・アクションプランを作成してください"),
-    "要約依頼":   ("secretary",  "議論の内容を箇条書きで整理・要約してください"),
+    "台本作成":   ("secretary",  "60秒動画の台本を秒単位で作成してください。冒頭フック・本編・締めのCTAを含めてください"),
     "問題発見":   ("detective",  "問題の根本原因を深掘りして調査してください"),
-    "成果物作成": ("engineer",   "議論の内容を元に具体的な成果物を作成してください"),
+    "成果物作成": ("engineer",   "議論の内容を元に60秒動画のJSON仕様書を作成してください"),
     "次フェーズ": ("leader",     "現在の成果を踏まえて次のフェーズのテーマを決めてください"),
 }
 
-# ReActモード用のゴールリスト（具体的な調査・成果物作成ゴール）
+# ReActモード用ゴールリスト（60秒動画コンテンツ連続生成）
 REACT_GOALS = [
-    "data/ ディレクトリの内容を調査して、現在のLocalOpenClawシステムの状態をまとめたレポートをoutput/system_report.md に作成してください。",
-    "data/ 配下のファイルを調査して、AIエージェントの改善点を特定し、output/improvement_report.md に提案レポートを作成してください。",
-    "data/ 配下の情報を元に、AI同士の協働で生み出せる新しい成果物のアイデアをoutput/ideas.md に書き出してください。",
-    "data/ 配下のファイルを調査して、有益な知識・情報をoutput/knowledge_report.md にまとめてください。",
-    "data/ 配下の情報を元に、短期プロジェクトの提案書をoutput/project_proposal.md に作成してください。",
+    (
+        "AIと日常生活をテーマにした60秒縦型動画のコンテンツをJSON形式で作成し、"
+        "output/content_ai_daily.json に保存してください。"
+        "JSONには title, platform(YouTube Shorts), target_audience, hook(冒頭3秒のセリフ), "
+        "script(秒単位の配列: time/visual/narration), cta, hashtags を含めてください。"
+    ),
+    (
+        "今すぐ使えるライフハックをテーマにした60秒縦型動画のコンテンツをJSON形式で作成し、"
+        "output/content_lifehack.json に保存してください。"
+        "JSONには title, platform(TikTok), target_audience, hook, script, cta, hashtags を含めてください。"
+    ),
+    (
+        "10分で作れる簡単レシピをテーマにした60秒縦型動画のコンテンツをJSON形式で作成し、"
+        "output/content_recipe.json に保存してください。"
+        "JSONには title, platform(Instagram Reels), target_audience, hook, script, cta, hashtags を含めてください。"
+    ),
+    (
+        "朝のルーティンをテーマにした60秒縦型動画のコンテンツをJSON形式で作成し、"
+        "output/content_morning_routine.json に保存してください。"
+        "JSONには title, platform(YouTube Shorts), target_audience, hook, script, cta, hashtags を含めてください。"
+    ),
+    (
+        "最新テクノロジー解説をテーマにした60秒縦型動画のコンテンツをJSON形式で作成し、"
+        "output/content_tech.json に保存してください。"
+        "JSONには title, platform(TikTok), target_audience, hook, script, cta, hashtags を含めてください。"
+    ),
+    (
+        "お金の節約術をテーマにした60秒縦型動画のコンテンツをJSON形式で作成し、"
+        "output/content_money_saving.json に保存してください。"
+        "JSONには title, platform(YouTube Shorts), target_audience, hook, script, cta, hashtags を含めてください。"
+    ),
+    (
+        "メンタルヘルス・ストレス解消をテーマにした60秒縦型動画のコンテンツをJSON形式で作成し、"
+        "output/content_mental_health.json に保存してください。"
+        "JSONには title, platform(Instagram Reels), target_audience, hook, script, cta, hashtags を含めてください。"
+    ),
 ]
 
-# Leaderが自律的に選ぶ議題リスト（ランダムローテーション）
+# Leaderが自律的に選ぶ議題リスト（60秒動画コンテンツ連続生成）
 AUTONOMOUS_THEMES = [
     (
-        "チームで今日取り組む最優先テーマを議論してください。"
-        "結論として『調査開始』『実装開始』『提案作成』のいずれかのキーワードで次のアクションを指示してください。"
+        "「AIと日常生活」をテーマにした60秒縦型動画（YouTube Shorts向け）のコンテンツを作成してください。"
+        "detectiveがトレンドと視聴者ニーズを調査し、researcherが構成を設計してください。"
+        "構成が決まったら『台本作成』で秒単位の台本を作成してください。"
+        "台本完成後は『JSON出力』でJSON形式にフォーマットしてください。"
     ),
     (
-        "LocalOpenClawシステムとして、AI同士が自律的に協働する仕組みの改善案を議論してください。"
-        "課題があれば『問題発見』、改善案は『提案作成』、実装するなら『実装開始』で指示してください。"
+        "「今すぐ使えるライフハック3選」をテーマにした60秒縦型動画（TikTok向け）のコンテンツを作成してください。"
+        "冒頭3秒で視聴者を引き付けるフックから始め、本編で3つのハック、最後にフォロー促進のCTAで締めてください。"
+        "researcherが具体的なハックを選定したら『台本作成』で秒単位の台本を作ってください。"
+        "台本完成後は『JSON出力』でJSON形式にフォーマットしてください。"
     ),
     (
-        "AI同士の協働で何か新しい成果物を作りましょう。テーマは自由に決めてください。"
-        "『調査開始』→『分析依頼』→『成果物作成』の順で役割を分担してください。"
+        "「10分で作れる簡単レシピ」をテーマにした60秒縦型動画（Instagram Reels向け）のコンテンツを作成してください。"
+        "食材・手順・完成映像の構成で視覚的に魅力的なコンテンツにしてください。"
+        "detectiveがトレンドレシピを調査し、salesが視聴者を引き付けるポイントを提案してください。"
+        "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
     ),
     (
-        "チームの知識を結集して有益なレポートを自律作成してください。"
-        "まず『調査開始』で情報収集し、次に『分析依頼』で分析、最後に『要約依頼』でまとめてください。"
+        "「生産性を上げる朝のルーティン」をテーマにした60秒縦型動画（YouTube Shorts向け）のコンテンツを作成してください。"
+        "20代〜30代の社会人をターゲットに、朝5:30〜7:00の理想的なルーティンを紹介してください。"
+        "researcherが科学的根拠のある習慣を選定し、secretaryが台本を整理してください。"
+        "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
     ),
     (
-        "AI同士で短期プロジェクトを立ち上げてください。"
-        "プロジェクト名・目標・担当を決め、それぞれが『実装開始』『調査開始』などのキーワードで着手してください。"
+        "「2026年注目のテクノロジー」をテーマにした60秒縦型動画（TikTok向け）のコンテンツを作成してください。"
+        "テック系コンテンツとして、AI・量子コンピューティング・空間コンピューティングから1つ選んで深掘りしてください。"
+        "detectiveが最新情報を調査し、engineerが技術的な正確性を確認してください。"
+        "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
+    ),
+    (
+        "「月3万円節約できる生活術」をテーマにした60秒縦型動画（YouTube Shorts向け）のコンテンツを作成してください。"
+        "固定費削減・食費節約・サブスク見直しの3ポイントを紹介する構成にしてください。"
+        "salesが説得力のある数字と事例を提案し、secretaryが分かりやすい台本にまとめてください。"
+        "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
+    ),
+    (
+        "「1日5分でできるメンタルリセット法」をテーマにした60秒縦型動画（Instagram Reels向け）のコンテンツを作成してください。"
+        "ストレスを抱えた20〜40代をターゲットに、科学的根拠のある方法を3つ紹介してください。"
+        "researcherが心理学・神経科学の観点から手法を選定し、salesが共感を呼ぶ切り口を提案してください。"
+        "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
     ),
 ]
 
@@ -342,7 +397,7 @@ class AutonomousLoop:
         return result
 
     async def _save_artifact(self, theme: str, result: dict, chain_results: dict):
-        """議論の成果物をMarkdownファイルとして保存"""
+        """議論の成果物をMarkdownファイルとして保存。JSON検出時は .json も出力"""
         self._output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         filepath = self._output_dir / f"cycle_{self._cycle:03d}_{timestamp}.md"
@@ -370,8 +425,40 @@ class AutonomousLoop:
 
         filepath.write_text("\n".join(lines), encoding="utf-8")
         logger.info("autonomous: 成果物を保存 → %s", filepath)
+
+        # JSON出力トリガーの結果からJSONを抽出して別ファイルにも保存
+        json_path = await self._try_save_json(chain_results, timestamp)
+
         await self._ws.broadcast({
             "type": "autonomous_artifact",
             "cycle": self._cycle,
             "path": str(filepath),
+            "json_path": str(json_path) if json_path else None,
         })
+
+    async def _try_save_json(self, chain_results: dict, timestamp: str) -> Optional[Path]:
+        """chain_results の中からJSONブロックを抽出してファイルに保存する"""
+        all_text = "\n".join(chain_results.values())
+
+        # ```json ... ``` ブロックを探す
+        match = re.search(r"```json\s*(\{.*?\})\s*```", all_text, re.DOTALL)
+        if not match:
+            # ブロックなしでも { で始まる塊を探す
+            match = re.search(r"(\{[^{}]*\"title\"[^{}]*\})", all_text, re.DOTALL)
+        if not match:
+            match = re.search(r"(\{.*\"hook\".*\})", all_text, re.DOTALL)
+
+        if not match:
+            return None
+
+        try:
+            parsed = json.loads(match.group(1))
+            json_path = self._output_dir / f"content_{self._cycle:03d}_{timestamp}.json"
+            json_path.write_text(
+                json.dumps(parsed, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            logger.info("autonomous: JSONコンテンツを保存 → %s", json_path)
+            return json_path
+        except (json.JSONDecodeError, IndexError):
+            return None

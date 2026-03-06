@@ -350,9 +350,21 @@ class ReActAgent:
         # qwen3 の <think>...</think> 思考ブロックを除去
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
+        def _to_dict(parsed) -> Optional[dict]:
+            """パース結果がdictならそのまま返す。listなら最初のdictを返す"""
+            if isinstance(parsed, dict):
+                return parsed
+            if isinstance(parsed, list):
+                for item in parsed:
+                    if isinstance(item, dict):
+                        return item
+            return None
+
         # まず全体を JSON として試みる
         try:
-            return json.loads(text)
+            result = _to_dict(json.loads(text))
+            if result is not None:
+                return result
         except json.JSONDecodeError:
             pass
 
@@ -360,7 +372,9 @@ class ReActAgent:
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
             try:
-                return json.loads(match.group())
+                result = _to_dict(json.loads(match.group()))
+                if result is not None:
+                    return result
             except json.JSONDecodeError:
                 pass
 

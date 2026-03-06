@@ -27,3 +27,103 @@ goals:
       - "プロジェクト"
       - "目標"
     min_chars: 150
+
+  - id: create_video_themes
+    description: "動画コンテンツサービス向けの動画テーマを10個考えて、output/video_themes.md に保存する。各テーマにタイトルと概要を含めること"
+    success_criteria: "output/video_themes.md が存在し、タイトルと概要を含む動画テーマが記載されている"
+    max_cycles: 3
+    check_file: "video_themes.md"
+    check_keywords:
+      - "動画"
+      - "テーマ"
+    min_chars: 200
+
+  - id: create_video_series
+    description: "視聴者に人気が出そうな動画シリーズ企画を5つ考え、各シリーズのタイトルと最初の5話分のエピソードタイトルを output/video_series.md に保存する"
+    success_criteria: "output/video_series.md が存在し、シリーズタイトルとエピソードが含まれている"
+    max_cycles: 3
+    check_file: "video_series.md"
+    check_keywords:
+      - "シリーズ"
+      - "エピソード"
+    min_chars: 200
+
+  - id: create_video_planning
+    description: "トレンドを活かした動画コンテンツ企画書を output/video_planning.md に作成する。タイトル・概要・ターゲット視聴者・差別化ポイントを含めること"
+    success_criteria: "output/video_planning.md が存在し、ターゲットと差別化ポイントが含まれている"
+    max_cycles: 3
+    check_file: "video_planning.md"
+    check_keywords:
+      - "ターゲット"
+      - "差別化"
+    min_chars: 200
+
+  - id: content_ai_daily
+    description: "AIと日常生活をテーマにした60秒縦型動画のコンテンツをJSON形式で output/content_ai_daily.json に作成する。title/platform/target_audience/hook/script/cta/hashtagsを含めること"
+    success_criteria: "output/content_ai_daily.json が存在し、hookとscriptが含まれている"
+    max_cycles: 3
+    check_file: "content_ai_daily.json"
+    check_keywords:
+      - "hook"
+      - "script"
+    min_chars: 100
+
+  - id: content_lifehack
+    description: "ライフハックをテーマにした60秒縦型動画のコンテンツをJSON形式で output/content_lifehack.json に作成する"
+    success_criteria: "output/content_lifehack.json が存在し、hookとscriptが含まれている"
+    max_cycles: 3
+    check_file: "content_lifehack.json"
+    check_keywords:
+      - "hook"
+      - "script"
+    min_chars: 100
+
+  - id: content_recipe
+    description: "簡単レシピをテーマにした60秒縦型動画のコンテンツをJSON形式で output/content_recipe.json に作成する"
+    success_criteria: "output/content_recipe.json が存在し、hookとscriptが含まれている"
+    max_cycles: 3
+    check_file: "content_recipe.json"
+    check_keywords:
+      - "hook"
+      - "script"
+    min_chars: 100
+
+  - id: content_morning_routine
+    description: "朝のルーティンをテーマにした60秒縦型動画のコンテンツをJSON形式で output/content_morning_routine.json に作成する"
+    success_criteria: "output/content_morning_routine.json が存在し、hookとscriptが含まれている"
+    max_cycles: 3
+    check_file: "content_morning_routine.json"
+    check_keywords:
+      - "hook"
+      - "script"
+    min_chars: 100
+
+  - id: content_tech
+    description: "最新テクノロジー解説をテーマにした60秒縦型動画のコンテンツをJSON形式で output/content_tech.json に作成する"
+    success_criteria: "output/content_tech.json が存在し、hookとscriptが含まれている"
+    max_cycles: 3
+    check_file: "content_tech.json"
+    check_keywords:
+      - "hook"
+      - "script"
+    min_chars: 100
+
+  - id: content_money_saving
+    description: "節約術をテーマにした60秒縦型動画のコンテンツをJSON形式で output/content_money_saving.json に作成する"
+    success_criteria: "output/content_money_saving.json が存在し、hookとscriptが含まれている"
+    max_cycles: 3
+    check_file: "content_money_saving.json"
+    check_keywords:
+      - "hook"
+      - "script"
+    min_chars: 100
+
+  - id: content_mental_health
+    description: "メンタルヘルスをテーマにした60秒縦型動画のコンテンツをJSON形式で output/content_mental_health.json に作成する"
+    success_criteria: "output/content_mental_health.json が存在し、hookとscriptが含まれている"
+    max_cycles: 3
+    check_file: "content_mental_health.json"
+    check_keywords:
+      - "hook"
+      - "script"
+    min_chars: 100
