@@ -12,18 +12,19 @@ services:
       # モデルデータを永続化（再起動後も再ダウンロード不要）
       - ollama_data:/root/.ollama
     environment:
-      - OLLAMA_KEEP_ALIVE=10m    # アイドル後10分でモデルをアンロード（メモリ節約）
-      - OLLAMA_NUM_PARALLEL=1    # 並列リクエストを1に制限（省メモリ）
+      - OLLAMA_KEEP_ALIVE=30m       # アイドル後30分でモデルをアンロード
+      - OLLAMA_NUM_PARALLEL=1       # 並列リクエストを1に制限（省メモリ）
       - OLLAMA_MAX_LOADED_MODELS=1  # 同時ロードモデル数を1に制限
+      - OLLAMA_FLASH_ATTENTION=1    # FlashAttention有効化（KVキャッシュ削減・速度向上）
     deploy:
       resources:
         limits:
-          cpus: '2.0'           # CPU使用上限: 2コア
-          memory: 4G            # メモリ上限: 4GB
+          # CPUはOllamaに任せる（制限なし → 全コアを推論に使用可能）
+          memory: 4G
         reservations:
-          memory: 512M          # 最低確保メモリ
+          memory: 512M
     restart: unless-stopped
-    # Apple Silicon: Metal GPU加速が自動有効化される
+    # 注: DockerコンテナではApple Silicon Metal GPUは使用不可（CPU推論のみ）
 
   # ==============================
   # ChromaDB - ベクトルDB（RAG用）

@@ -15,8 +15,11 @@ _TIMEOUT = 180
 # qwen3系など思考モード（CoT）対応モデルではthinkingを無効化してレスポンスを高速化
 _DISABLE_THINKING = os.getenv("DISABLE_THINKING", "true").lower() != "false"
 
-# コンテキストウィンドウサイズ（トークン数）。メモリ消費に直結する
-_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "2048"))
+# コンテキストウィンドウサイズ（トークン数）。小さいほど速い（CPU推論では特に効果大）
+_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "1024"))
+
+# CPU推論スレッド数。0=Ollamaが自動決定（全コア使用）
+_NUM_THREAD = int(os.getenv("OLLAMA_NUM_THREAD", "0"))
 
 # LLMに渡すテキストの最大文字数（超えたら末尾を切り捨て）
 _CONTEXT_MAX_CHARS = int(os.getenv("CONTEXT_MAX_CHARS", "3000"))
@@ -48,8 +51,10 @@ async def stream_chat(
         ],
         "stream": True,
         "options": {
-            # コンテキストウィンドウ上限。小さいほどVRAM/RAMを節約できる
+            # コンテキストウィンドウ上限。小さいほど速い（CPU推論では特に効果大）
             "num_ctx": _NUM_CTX,
+            # num_thread=0は「自動」のため省略する（Ollamaが全コアを自動使用）
+            **( {"num_thread": _NUM_THREAD} if _NUM_THREAD > 0 else {} ),
         },
     }
     # qwen3系など思考モード対応モデルのみ think パラメータを付与（gemma3等は非対応）
