@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Optional
 
 from app.agents.react import ReActAgent
+from app.goals.checker import check_goal
+from app.goals.manager import GoalManager, GoalStatus
 from app.llm.ollama import chat_complete
 
 # REACT_MODE=true の場合、自律ループでReActエンジンを使用する
@@ -81,11 +83,19 @@ AUTONOMOUS_THEMES = [
 # ==============================
 
 class AutonomousLoop:
-    def __init__(self, orchestrator, ws_manager, output_dir: Path, interval: int = DEFAULT_INTERVAL):
+    def __init__(
+        self,
+        orchestrator,
+        ws_manager,
+        output_dir: Path,
+        interval: int = DEFAULT_INTERVAL,
+        goal_manager: Optional[GoalManager] = None,
+    ):
         self._orch = orchestrator
         self._ws = ws_manager
         self._output_dir = output_dir
         self._interval = interval
+        self._goal_manager = goal_manager
         self._task: Optional[asyncio.Task] = None
         self._cycle = 0
         self._running = False
@@ -149,7 +159,15 @@ class AutonomousLoop:
 
     async def _react_cycle(self):
         """ReActモードの1サイクル: エージェントがゴール達成まで自律的に調査・実行"""
-        goal = REACT_GOALS[(self._cycle - 1) % len(REACT_GOALS)]
+        # goal_manager にpendingゴールがあればそちらを優先
+        managed_goal = None
+        if self._goal_manager:
+            pending = self._goal_manager.pending_goals()
+            if pending:
+                managed_goal = pending[0]
+                self._goal_manager.update_status(managed_goal.id, GoalStatus.IN_PROGRESS)
+
+        goal = managed_goal.description if managed_goal else REACT_GOALS[(self._cycle - 1) % len(REACT_GOALS)]
 
         # detective → researcher → engineer の順でローテーション（役割に応じた調査）
         react_agents = ["detective", "researcher", "engineer"]
@@ -178,6 +196,29 @@ class AutonomousLoop:
         )
         result = await react_agent.run(goal)
         await self._save_react_artifact(goal, result)
+
+        # managed_goal がある場合は達成判定を実行してステータスを更新
+        if managed_goal and self._goal_manager:
+            try:
+                check_result = await check_goal(managed_goal, self._output_dir)
+                new_status = GoalStatus.COMPLETED if check_result.achieved else GoalStatus.PENDING
+                self._goal_manager.update_status(managed_goal.id, new_status)
+                await self._ws.broadcast({
+                    "type": "goal_checked",
+                    "goal_id": managed_goal.id,
+                    "achieved": check_result.achieved,
+                    "static_passed": check_result.static_passed,
+                    "llm_answer": check_result.details.get("llm_answer", "SKIP"),
+                    "report_path": check_result.report_path,
+                })
+                logger.info(
+                    "autonomous[react]: ゴール '%s' 判定 — achieved=%s",
+                    managed_goal.id, check_result.achieved,
+                )
+            except Exception as exc:
+                logger.warning("autonomous[react]: ゴール判定失敗 id=%s error=%s", managed_goal.id, exc)
+                if self._goal_manager:
+                    self._goal_manager.update_status(managed_goal.id, GoalStatus.PENDING)
 
         await self._ws.broadcast({
             "type": "autonomous_cycle_done",

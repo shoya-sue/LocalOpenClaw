@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import PhaserGame  from './game/PhaserGame.jsx';
 import ControlPanel from './components/ControlPanel.jsx';
+import GoalPanel   from './components/GoalPanel.jsx';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
 const WS_URL      = import.meta.env.VITE_WS_URL      || 'ws://localhost:8080/ws';
@@ -15,6 +16,8 @@ export default function App() {
   const [tasks,         setTasks]         = useState([]);
   const [agentStatuses, setAgentStatuses] = useState({});
   const [wsState,       setWsState]       = useState('接続中...');
+  const [goals,         setGoals]         = useState([]);
+  const [checkingIds,   setCheckingIds]   = useState(new Set());
 
   const wsRef = useRef(null);
 
@@ -35,6 +38,11 @@ export default function App() {
         setAgentStatuses(init);
       })
       .catch(() => setAgents([]));
+
+    fetch(`${BACKEND_URL}/goals`)
+      .then(r => r.json())
+      .then(data => setGoals(data.goals || []))
+      .catch(() => setGoals([]));
 
     fetch(`${BACKEND_URL}/health/ollama`)
       .then(r => r.json())
@@ -131,7 +139,36 @@ export default function App() {
       case 'autonomous_artifact':
         addActivity({ type: 'autonomous_artifact', cycle: event.cycle, path: event.path });
         break;
+
+      case 'goal_checked':
+        // ゴールの状態をバックエンドから再取得して同期
+        fetch(`${BACKEND_URL}/goals`)
+          .then(r => r.json())
+          .then(data => setGoals(data.goals || []))
+          .catch(() => {});
+        addActivity({ type: 'goal_checked', goal_id: event.goal_id, achieved: event.achieved });
+        break;
     }
+  };
+
+  // ゴール達成判定を手動実行
+  const handleCheckGoal = (goalId) => {
+    setCheckingIds(prev => new Set([...prev, goalId]));
+    fetch(`${BACKEND_URL}/goals/${goalId}/check`, { method: 'POST' })
+      .then(r => r.json())
+      .then(() => {
+        // 判定後はサーバーからゴール状態を再取得して同期
+        return fetch(`${BACKEND_URL}/goals`).then(r => r.json());
+      })
+      .then(data => setGoals(data.goals || []))
+      .catch(() => {})
+      .finally(() => {
+        setCheckingIds(prev => {
+          const next = new Set(prev);
+          next.delete(goalId);
+          return next;
+        });
+      });
   };
 
   return (
@@ -146,6 +183,13 @@ export default function App() {
         tasks={tasks}
         wsState={wsState}
         ollamaStatus={ollamaStatus}
+      />
+
+      {/* ゴール管理パネル */}
+      <GoalPanel
+        goals={goals}
+        onCheckGoal={handleCheckGoal}
+        checkingIds={checkingIds}
       />
     </div>
   );

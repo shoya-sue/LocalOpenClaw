@@ -54,7 +54,7 @@ _AUTONOMOUS_ENABLED = os.environ.get("AUTONOMOUS_ENABLED", "false").lower() == "
 # Watchdogも明示的に有効化しないと起動しない
 _WATCHDOG_ENABLED = os.environ.get("WATCHDOG_ENABLED", "false").lower() == "true"
 _OUTPUT_DIR = Path(os.environ.get("DATA_DIR", "/data")) / "output"
-autonomous_loop = AutonomousLoop(orchestrator, ws_manager, _OUTPUT_DIR, _AUTONOMOUS_INTERVAL)
+autonomous_loop = AutonomousLoop(orchestrator, ws_manager, _OUTPUT_DIR, _AUTONOMOUS_INTERVAL, goal_manager)
 
 
 # ==============================

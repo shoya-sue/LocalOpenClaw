@@ -5,10 +5,11 @@ ReActエンジン（Reasoning + Acting）
   ゴール設定 → [Thought → Action → Observation] × max_steps → Finish
 
 利用可能なツール:
-  read_file    /data/ 配下のファイルを読み込む
-  write_file   /data/output/ 配下にファイルを書き込む
-  read_memory  エージェントのメモリを読む
-  finish       結論を出してループを終了する
+  read_file       /data/ 配下のファイルを読み込む
+  write_file      /data/output/ 配下にファイルを書き込む
+  read_memory     エージェントのメモリを読む
+  search_knowledge ChromaDBの知識ベースを検索する（RAG）
+  finish          結論を出してループを終了する
 """
 
 import json
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.agents.memory import read_memory as agent_read_memory
+from app.agents.rag import search_knowledge as rag_search
 from app.llm.ollama import chat_complete
 from app.ws.manager import ConnectionManager
 
@@ -44,15 +46,17 @@ _SYSTEM_PROMPT = """\
 あなたは自律エージェントです。ゴールを達成するためにツールを使って行動してください。
 
 利用可能なツール（JSON形式で出力）:
-- read_file:   {"thought":"...", "action":"read_file",   "path":"ファイル名またはサブパス（例: report.txt, processed/data.csv）"}
-- write_file:  {"thought":"...", "action":"write_file",  "path":"output/ファイル名", "content":"内容"}
-- read_memory: {"thought":"...", "action":"read_memory", "codename":"エージェント名", "filename":"memory.md"}
-- finish:      {"thought":"...", "action":"finish",      "result":"最終的な結論"}
+- read_file:        {"thought":"...", "action":"read_file",        "path":"ファイル名またはサブパス（例: report.txt, processed/data.csv）"}
+- write_file:       {"thought":"...", "action":"write_file",       "path":"output/ファイル名", "content":"内容"}
+- read_memory:      {"thought":"...", "action":"read_memory",      "codename":"エージェント名", "filename":"memory.md"}
+- search_knowledge: {"thought":"...", "action":"search_knowledge", "query":"検索クエリ", "collection":"knowledge"}
+- finish:           {"thought":"...", "action":"finish",           "result":"最終的な結論"}
 
 ルール:
 - 必ずJSONのみで回答してください。JSONの外にテキストを書かないでください
 - read_file の path は data/ を除いたファイル名のみ指定（例: react-test.txt, output/summary.md）
 - write_file の path は必ず output/ で始めてください
+- search_knowledge は知識ベース（RAG）を検索する。関連情報を調べる際に使用してください
 - 調査・検証が完了したら必ず finish を呼んでください
 """
 
@@ -164,12 +168,19 @@ async def _execute_tool(action: dict) -> str:
             return content[:600] + "\n…（省略）"
         return content
 
+    elif tool == "search_knowledge":
+        query = action.get("query", "")
+        collection = action.get("collection", "knowledge")
+        if not query:
+            return "[ERROR] search_knowledge には query が必要です"
+        return await rag_search(query, collection)
+
     elif tool == "finish":
         # finish は _run ループ内で処理するため、ここには通常来ない
         return action.get("result", "")
 
     else:
-        return f"[ERROR] 不明なアクション: {tool}（read_file / write_file / read_memory / finish を使用してください）"
+        return f"[ERROR] 不明なアクション: {tool}（read_file / write_file / read_memory / search_knowledge / finish を使用してください）"
 
 
 # ==============================
