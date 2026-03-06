@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from app.agents.memory import read_memory as agent_read_memory
-from app.agents.rag import search_knowledge as rag_search
+from app.agents.rag import DEFAULT_COLLECTION as _DEFAULT_COLLECTION, agent_collection_name, search_knowledge as rag_search
 from app.agents.web import web_search as agent_web_search
 from app.llm.ollama import chat_complete
 from app.ws.manager import ConnectionManager
@@ -43,25 +43,32 @@ _HISTORY_MAX_CHARS = int(os.getenv("REACT_HISTORY_MAX_CHARS", "1500"))
 # システムプロンプト
 # ==============================
 
-_SYSTEM_PROMPT = """\
+_SYSTEM_PROMPT_TEMPLATE = """\
 あなたは自律エージェントです。ゴールを達成するためにツールを使って行動してください。
 
 利用可能なツール（JSON形式で出力）:
-- read_file:        {"thought":"...", "action":"read_file",        "path":"ファイル名またはサブパス（例: report.txt, processed/data.csv）"}
-- write_file:       {"thought":"...", "action":"write_file",       "path":"output/ファイル名", "content":"内容"}
-- read_memory:      {"thought":"...", "action":"read_memory",      "codename":"エージェント名", "filename":"memory.md"}
-- search_knowledge: {"thought":"...", "action":"search_knowledge", "query":"検索クエリ", "collection":"knowledge"}
-- web_search:       {"thought":"...", "action":"web_search",       "query":"検索クエリ（英語推奨）"}
-- finish:           {"thought":"...", "action":"finish",           "result":"最終的な結論"}
+- read_file:        {{"thought":"...", "action":"read_file",        "path":"ファイル名またはサブパス（例: report.txt, processed/data.csv）"}}
+- write_file:       {{"thought":"...", "action":"write_file",       "path":"output/ファイル名", "content":"内容"}}
+- read_memory:      {{"thought":"...", "action":"read_memory",      "codename":"エージェント名", "filename":"memory.md"}}
+- search_knowledge: {{"thought":"...", "action":"search_knowledge", "query":"検索クエリ", "collection":"{agent_collection}"}}
+- web_search:       {{"thought":"...", "action":"web_search",       "query":"検索クエリ（英語推奨）"}}
+- finish:           {{"thought":"...", "action":"finish",           "result":"最終的な結論"}}
 
 ルール:
 - 必ずJSONのみで回答してください。JSONの外にテキストを書かないでください
 - read_file の path は data/ を除いたファイル名のみ指定（例: react-test.txt, output/summary.md）
 - write_file の path は必ず output/ で始めてください
-- search_knowledge は知識ベース（RAG）を検索する。関連情報を調べる際に使用してください
+- search_knowledge はあなた専用の知識ベース（RAG）を検索する。自分の役割・スキルを調べる際に使用してください
 - web_search はDuckDuckGoでWeb検索する。最新情報・技術情報の収集に使用してください
 - 調査・検証が完了したら必ず finish を呼んでください
 """
+
+
+def _build_system_prompt(codename: str) -> str:
+    """エージェントのcodernameに合わせてシステムプロンプトを生成する"""
+    return _SYSTEM_PROMPT_TEMPLATE.format(
+        agent_collection=agent_collection_name(codename)
+    )
 
 
 # ==============================
@@ -120,7 +127,7 @@ def _safe_path(root: Path, user_path: str) -> Optional[Path]:
     return target
 
 
-async def _execute_tool(action: dict) -> str:
+async def _execute_tool(action: dict, default_collection: str = _DEFAULT_COLLECTION) -> str:
     """アクション dict を受け取りツールを実行して結果文字列を返す"""
     tool = action.get("action", "")
 
@@ -173,7 +180,7 @@ async def _execute_tool(action: dict) -> str:
 
     elif tool == "search_knowledge":
         query = action.get("query", "")
-        collection = action.get("collection", "knowledge")
+        collection = action.get("collection", default_collection)
         if not query:
             return "[ERROR] search_knowledge には query が必要です"
         return await rag_search(query, collection)
@@ -227,7 +234,7 @@ class ReActAgent:
 
             # Thought + Action を LLM に生成させる
             user_prompt = self._build_prompt(goal, steps)
-            system = self.personality + "\n\n" + _SYSTEM_PROMPT
+            system = self.personality + "\n\n" + _build_system_prompt(self.codename)
             raw = await chat_complete(system, user_prompt)
             action = self._parse_action(raw)
 
@@ -280,7 +287,10 @@ class ReActAgent:
                 break
 
             # ツール実行 → Observation 取得
-            observation = await _execute_tool(action)
+            # エージェント自身のコレクションをデフォルトで検索する
+            observation = await _execute_tool(
+                action, default_collection=agent_collection_name(self.codename)
+            )
             step.observation = observation
             steps.append(step)
 

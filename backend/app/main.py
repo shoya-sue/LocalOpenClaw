@@ -20,6 +20,7 @@ from watchdog.observers import Observer
 
 from app.agents.manager import AgentManager
 from app.agents.memory import append_memory, list_memory_files, read_memory, write_memory
+from app.agents.rag import ingest_agent_profiles
 from app.agents.react import ReActAgent
 from app.autonomous import AutonomousLoop
 from app.goals.checker import check_goal
@@ -363,6 +364,13 @@ async def _startup():
         logger.info("watchdog: data/ ディレクトリの監視を開始しました")
     else:
         logger.info("watchdog: 無効（WATCHDOG_ENABLED=false）")
+
+    # エージェントプロフィールを各専用ChromaDBコレクションに投入（失敗してもサービスは起動継続）
+    try:
+        all_agents = [agent_manager.get(c) for c in agent_manager.codenames() if agent_manager.get(c)]
+        await ingest_agent_profiles(all_agents)
+    except Exception as e:
+        logger.warning("startup: エージェントプロフィール投入に失敗しました（無視）: %s", e)
 
     # AUTONOMOUS_ENABLED=true のときのみ起動（デフォルト無効でCPU節約）
     if _AUTONOMOUS_ENABLED:
