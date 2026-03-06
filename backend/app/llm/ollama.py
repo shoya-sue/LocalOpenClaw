@@ -8,7 +8,7 @@ from typing import AsyncGenerator
 import httpx
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:1.7b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma3:1b")
 # タスク実行が長くなる場合に備えてタイムアウトを大きめに設定
 _TIMEOUT = 180
 
@@ -47,13 +47,14 @@ async def stream_chat(
             {"role": "user", "content": _trim_content(user_message)},
         ],
         "stream": True,
-        # 思考モード（CoT）を無効化：qwen3系モデルの高速化
-        "think": not _DISABLE_THINKING,
         "options": {
             # コンテキストウィンドウ上限。小さいほどVRAM/RAMを節約できる
             "num_ctx": _NUM_CTX,
         },
     }
+    # qwen3系など思考モード対応モデルのみ think パラメータを付与（gemma3等は非対応）
+    if not _DISABLE_THINKING:
+        payload["think"] = True
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         async with client.stream("POST", f"{OLLAMA_BASE_URL}/api/chat", json=payload) as resp:
             async for line in resp.aiter_lines():

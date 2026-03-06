@@ -63,7 +63,7 @@ services:
     environment:
       - CHROMADB_URL=http://chromadb:8000
       - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:1.7b}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma3:1b}
       - AGENT_MEMORY_PATH=/workspace
       # LLMコンテキストウィンドウ上限（トークン数）。大きいほどメモリ消費増
       - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-2048}

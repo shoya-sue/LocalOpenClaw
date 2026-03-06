@@ -22,6 +22,7 @@ from typing import Optional
 
 from app.agents.memory import read_memory as agent_read_memory
 from app.agents.rag import search_knowledge as rag_search
+from app.agents.web import web_search as agent_web_search
 from app.llm.ollama import chat_complete
 from app.ws.manager import ConnectionManager
 
@@ -50,6 +51,7 @@ _SYSTEM_PROMPT = """\
 - write_file:       {"thought":"...", "action":"write_file",       "path":"output/ファイル名", "content":"内容"}
 - read_memory:      {"thought":"...", "action":"read_memory",      "codename":"エージェント名", "filename":"memory.md"}
 - search_knowledge: {"thought":"...", "action":"search_knowledge", "query":"検索クエリ", "collection":"knowledge"}
+- web_search:       {"thought":"...", "action":"web_search",       "query":"検索クエリ（英語推奨）"}
 - finish:           {"thought":"...", "action":"finish",           "result":"最終的な結論"}
 
 ルール:
@@ -57,6 +59,7 @@ _SYSTEM_PROMPT = """\
 - read_file の path は data/ を除いたファイル名のみ指定（例: react-test.txt, output/summary.md）
 - write_file の path は必ず output/ で始めてください
 - search_knowledge は知識ベース（RAG）を検索する。関連情報を調べる際に使用してください
+- web_search はDuckDuckGoでWeb検索する。最新情報・技術情報の収集に使用してください
 - 調査・検証が完了したら必ず finish を呼んでください
 """
 
@@ -174,6 +177,12 @@ async def _execute_tool(action: dict) -> str:
         if not query:
             return "[ERROR] search_knowledge には query が必要です"
         return await rag_search(query, collection)
+
+    elif tool == "web_search":
+        query = action.get("query", "")
+        if not query:
+            return "[ERROR] web_search には query が必要です"
+        return await agent_web_search(query)
 
     elif tool == "finish":
         # finish は _run ループ内で処理するため、ここには通常来ない
