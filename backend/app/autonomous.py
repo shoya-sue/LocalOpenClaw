@@ -34,15 +34,49 @@ logger = logging.getLogger("uvicorn.error")
 # 1サイクルのインターバル（秒）。環境変数で上書き可能
 DEFAULT_INTERVAL = 180  # 3分
 
+# 台本作成指示：5区間フォーマット・映像指示・テキストオーバーレイ・BGMキュー必須
+_SCRIPT_INSTRUCTION = (
+    "60秒縦型動画の台本を以下の5区間・秒単位で作成してください。"
+    "各区間に映像指示・ナレーション（「」でセリフ）・テキストオーバーレイ・BGMキューを必ず記載してください。\n\n"
+    "0-5秒（フック）:\n  映像: \n  ナレーション: 「」\n  テキスト: \n  BGM: \n\n"
+    "5-20秒（本編①）:\n  映像: \n  ナレーション: 「」\n  テキスト: \n  BGM: \n\n"
+    "20-40秒（本編②）:\n  映像: \n  ナレーション: 「」\n  テキスト: \n  BGM: \n\n"
+    "40-55秒（まとめ）:\n  映像: \n  ナレーション: 「」\n  テキスト: \n  BGM: \n\n"
+    "55-60秒（CTA）:\n  映像: \n  ナレーション: 「」\n  テキスト: \n  BGM:"
+)
+
+# JSON出力指示：動画制作ツール用の完全スキーマ（resolution/aspect_ratio/scenes[]/bgm_cue含む）
+_JSON_INSTRUCTION = (
+    "動画コンテンツの仕様を以下の完全なJSONスキーマで出力してください。必ず ```json コードブロックで囲むこと。\n\n"
+    '{\n'
+    '  "title": "動画タイトル",\n'
+    '  "platform": "YouTube Shorts",\n'
+    '  "resolution": "1080x1920",\n'
+    '  "aspect_ratio": "9:16",\n'
+    '  "duration_sec": 60,\n'
+    '  "target_audience": "ターゲット視聴者（具体的に）",\n'
+    '  "hook": "冒頭3秒の強いセリフ",\n'
+    '  "scenes": [\n'
+    '    {"time": "0-5", "visual": "映像内容", "narration": "セリフ", "text_overlay": "テキスト", "bgm_cue": "BGMの雰囲気"},\n'
+    '    {"time": "5-20", "visual": "映像内容", "narration": "セリフ", "text_overlay": "テキスト", "bgm_cue": "BGMの雰囲気"},\n'
+    '    {"time": "20-40", "visual": "映像内容", "narration": "セリフ", "text_overlay": "テキスト", "bgm_cue": "BGMの雰囲気"},\n'
+    '    {"time": "40-55", "visual": "映像内容", "narration": "セリフ", "text_overlay": "テキスト", "bgm_cue": "BGMの雰囲気"},\n'
+    '    {"time": "55-60", "visual": "映像内容", "narration": "セリフ", "text_overlay": "テキスト", "bgm_cue": "BGMの雰囲気"}\n'
+    '  ],\n'
+    '  "cta": "チャンネル登録・いいねを促すCTAテキスト",\n'
+    '  "hashtags": ["#タグ1", "#タグ2", "#タグ3", "#タグ4", "#タグ5", "#タグ6", "#タグ7", "#タグ8", "#タグ9", "#タグ10"]\n'
+    "}"
+)
+
 # エージェントが使う厳選トリガーワード → (担当エージェント, 追加指示)
 TRIGGER_ACTIONS: dict[str, tuple[str, str]] = {
-    "調査開始":   ("detective",  "詳しく現地調査・情報収集を行いレポートを作成してください"),
-    "分析依頼":   ("researcher", "収集データを分析し、知見・仮説をまとめてください"),
-    "JSON出力":   ("engineer",   "議論の内容をJSON形式でフォーマットしてください。フィールド: title, platform, target_audience, hook(冒頭3秒のセリフ), script(秒単位の配列: time/visual/narration), cta, hashtags"),
-    "提案作成":   ("sales",      "具体的な提案・アクションプランを作成してください"),
-    "台本作成":   ("secretary",  "60秒動画の台本を秒単位で作成してください。冒頭フック・本編・締めのCTAを含めてください"),
-    "問題発見":   ("detective",  "問題の根本原因を深掘りして調査してください"),
-    "成果物作成": ("engineer",   "議論の内容を元に60秒動画のJSON仕様書を作成してください"),
+    "調査開始":   ("detective",  "SNSトレンド・ターゲット視聴者・人気ハッシュタグを具体的な数字で調査してレポートしてください"),
+    "分析依頼":   ("researcher", "動画の最適構成を設計し、ターゲット視聴者・差別化ポイントを時間軸（0-5秒、5-20秒…）で分析してください"),
+    "JSON出力":   ("engineer",   _JSON_INSTRUCTION),
+    "提案作成":   ("sales",      "フック文3案（数字・疑問文・衝撃の事実パターン）とCTA・ハッシュタグ10個を今すぐ提案してください"),
+    "台本作成":   ("secretary",  _SCRIPT_INSTRUCTION),
+    "問題発見":   ("detective",  "視聴維持率が下がる原因を具体的に調査し、改善策を報告してください"),
+    "成果物作成": ("engineer",   _JSON_INSTRUCTION),
     "次フェーズ": ("leader",     "現在の成果を踏まえて次のフェーズのテーマを決めてください"),
 }
 
@@ -192,6 +226,8 @@ class AutonomousLoop:
                     logger.warning("autonomous[react]: サイクル %d 失敗: %s", self._cycle, exc)
             else:
                 theme = AUTONOMOUS_THEMES[(self._cycle - 1) % len(AUTONOMOUS_THEMES)]
+                # 出力フォーマット仕様をテーマ先頭に付加して品質を担保
+                theme = "【フォーマット】9:16縦型・1080×1920・60秒動画\n【必須出力】秒単位台本＋JSON仕様書（resolution/scenes[]/bgm_cue含む）\n\n" + theme
                 logger.info("autonomous: サイクル %d 開始 — テーマ: %s", self._cycle, theme[:40])
 
                 await self._ws.broadcast({
@@ -334,8 +370,9 @@ class AutonomousLoop:
         main_text = result.get("response", "")
         agent_results: dict[str, str] = result.get("agent_results", {})
 
-        # 全テキストを結合してトリガーワードを検索
-        all_text = main_text + "\n".join(agent_results.values())
+        # テーマ文字列も含めてトリガーワードを検索
+        # テーマに明示的に指定されたトリガーを確実に発火させる
+        all_text = main_text + "\n".join(agent_results.values()) + "\n" + theme
         triggered = self._detect_triggers(all_text)
 
         chain_results: dict[str, str] = {}
@@ -346,7 +383,9 @@ class AutonomousLoop:
                 "keyword": word,
                 "agent": agent_code,
             })
-            chain_result = await self._run_agent_task(agent_code, instruction, context=main_text)
+            chain_result = await self._run_agent_task(
+                agent_code, instruction, context=main_text, agent_results=agent_results
+            )
             chain_results[f"{word}({agent_code})"] = chain_result
 
         # 成果物ファイルを自動生成
@@ -359,16 +398,22 @@ class AutonomousLoop:
         })
 
     def _detect_triggers(self, text: str) -> dict[str, tuple[str, str]]:
-        """テキストからトリガーワードを検出。最初に見つかった2件まで"""
+        """テキストからトリガーワードを検出。最初に見つかった3件まで"""
         found: dict[str, tuple[str, str]] = {}
         for word, action in TRIGGER_ACTIONS.items():
             if word in text and word not in found:
                 found[word] = action
-            if len(found) >= 2:
+            if len(found) >= 3:
                 break
         return found
 
-    async def _run_agent_task(self, agent_code: str, instruction: str, context: str) -> str:
+    async def _run_agent_task(
+        self,
+        agent_code: str,
+        instruction: str,
+        context: str,
+        agent_results: Optional[dict[str, str]] = None,
+    ) -> str:
         """特定エージェントに単独でタスクを実行させる"""
         from app.agents.manager import AgentStatus
         agent_data = self._orch.agents.get(agent_code)
@@ -384,7 +429,21 @@ class AutonomousLoop:
         })
 
         system = agent_data.get("personality", f"あなたは{agent_code}です。")
-        prompt = f"【背景】\n{context[:500]}\n\n【指示】\n{instruction}"
+
+        # コンテキスト構築: Leaderの統合回答 + 各エージェントの個別報告
+        max_context_chars = int(os.getenv("CONTEXT_MAX_CHARS", "3000")) // 2
+        context_parts = [f"【Leaderの統合回答】\n{context[:300]}"]
+        if agent_results:
+            for agent, text in agent_results.items():
+                context_parts.append(f"【{agent}の報告】\n{text[:300]}")
+        full_context = "\n\n".join(context_parts)
+        if len(full_context) > max_context_chars:
+            full_context = "…（省略）\n" + full_context[-max_context_chars:]
+        logger.info(
+            "autonomous: _run_agent_task %s — context %d文字", agent_code, len(full_context)
+        )
+
+        prompt = f"【背景情報】\n{full_context}\n\n【指示】\n{instruction}"
         result = await chat_complete(system, prompt)
 
         self._orch.agents.set_status(agent_code, AgentStatus.IDLE)
@@ -437,22 +496,61 @@ class AutonomousLoop:
         })
 
     async def _try_save_json(self, chain_results: dict, timestamp: str) -> Optional[Path]:
-        """chain_results の中からJSONブロックを抽出してファイルに保存する"""
+        """chain_results の中からJSONブロックを抽出・検証してファイルに保存する"""
         all_text = "\n".join(chain_results.values())
 
-        # ```json ... ``` ブロックを探す
-        match = re.search(r"```json\s*(\{.*?\})\s*```", all_text, re.DOTALL)
-        if not match:
-            # ブロックなしでも { で始まる塊を探す
-            match = re.search(r"(\{[^{}]*\"title\"[^{}]*\})", all_text, re.DOTALL)
-        if not match:
-            match = re.search(r"(\{.*\"hook\".*\})", all_text, re.DOTALL)
+        parsed = None
 
-        if not match:
+        # 各 ```json ... ``` ブロックを非グリーディで探し、先頭から順に試す
+        # 複数ブロック（engineer + secretary）がある場合に誤マッチしないよう非グリーディ
+        for block_match in re.finditer(r"```json\s*(.*?)\s*```", all_text, re.DOTALL):
+            block = block_match.group(1).strip()
+            try:
+                candidate = json.loads(block)
+                # 動画仕様書として必要なフィールドを持つブロックを優先
+                if "title" in candidate and ("hook" in candidate or "scenes" in candidate):
+                    parsed = candidate
+                    break
+            except json.JSONDecodeError:
+                # ブロック内の {...} 部分だけ抽出して再試行
+                inner = re.search(r"\{.*\}", block, re.DOTALL)
+                if inner:
+                    try:
+                        candidate = json.loads(inner.group())
+                        if "title" in candidate and ("hook" in candidate or "scenes" in candidate):
+                            parsed = candidate
+                            break
+                    except json.JSONDecodeError:
+                        continue
+
+        if parsed is None:
             return None
 
         try:
-            parsed = json.loads(match.group(1))
+
+            # 動画制作に最低限必要なフィールドを検証
+            required_fields = {"title", "hook"}
+            missing = required_fields - parsed.keys()
+            if missing:
+                logger.warning("autonomous: JSON検証失敗 — 必須フィールド不足: %s", missing)
+                return None
+
+            # scenesフィールドが空または存在しない場合はスケルトンを補完
+            if not parsed.get("scenes"):
+                parsed["scenes"] = [
+                    {"time": "0-5", "visual": "", "narration": "", "text_overlay": "", "bgm_cue": ""},
+                    {"time": "5-20", "visual": "", "narration": "", "text_overlay": "", "bgm_cue": ""},
+                    {"time": "20-40", "visual": "", "narration": "", "text_overlay": "", "bgm_cue": ""},
+                    {"time": "40-55", "visual": "", "narration": "", "text_overlay": "", "bgm_cue": ""},
+                    {"time": "55-60", "visual": "", "narration": "", "text_overlay": "", "bgm_cue": ""},
+                ]
+                logger.warning("autonomous: scenesフィールドが空のためスケルトンを補完")
+
+            # 動画フォーマット情報を自動補完（未設定の場合）
+            parsed.setdefault("resolution", "1080x1920")
+            parsed.setdefault("aspect_ratio", "9:16")
+            parsed.setdefault("duration_sec", 60)
+
             json_path = self._output_dir / f"content_{self._cycle:03d}_{timestamp}.json"
             json_path.write_text(
                 json.dumps(parsed, ensure_ascii=False, indent=2),
@@ -460,5 +558,6 @@ class AutonomousLoop:
             )
             logger.info("autonomous: JSONコンテンツを保存 → %s", json_path)
             return json_path
-        except (json.JSONDecodeError, IndexError):
+        except (json.JSONDecodeError, IndexError) as exc:
+            logger.warning("autonomous: JSON解析失敗: %s", exc)
             return None
