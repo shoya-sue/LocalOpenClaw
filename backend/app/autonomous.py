@@ -202,7 +202,7 @@ class AutonomousLoop:
             try:
                 check_result = await check_goal(managed_goal, self._output_dir)
                 new_status = GoalStatus.COMPLETED if check_result.achieved else GoalStatus.PENDING
-                self._goal_manager.update_status(managed_goal.id, new_status)
+                self._goal_manager.update_status(managed_goal.id, new_status, report_path=check_result.report_path)
                 await self._ws.broadcast({
                     "type": "goal_checked",
                     "goal_id": managed_goal.id,

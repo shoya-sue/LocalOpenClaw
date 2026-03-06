@@ -86,6 +86,17 @@ function GoalCard({ goal, onCheck, isChecking }) {
         <div style={styles.achievedBadge}>✓ ゴール達成</div>
       )}
 
+      {goal.report_path && (
+        <a
+          href={`${BACKEND_URL}/goals/${goal.id}/report`}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={styles.reportLink}
+        >
+          📄 レポートを表示
+        </a>
+      )}
+
       <button
         style={{
           ...styles.checkButton,
@@ -194,6 +205,14 @@ const styles = {
     borderRadius: 2,
     color: '#7fdbff',
     fontSize: 10,
+    fontFamily: 'monospace',
+  },
+  reportLink: {
+    display: 'block',
+    fontSize: 10,
+    color: '#f39c12',
+    textDecoration: 'none',
+    marginBottom: 6,
     fontFamily: 'monospace',
   },
 };

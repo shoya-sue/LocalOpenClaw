@@ -11,7 +11,8 @@ import time
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from watchdog.events import FileSystemEventHandler
@@ -32,9 +33,17 @@ logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI(title="LocalOpenClaw API", version="0.4.0")
 
+_ALLOW_ORIGINS = [
+    o.strip()
+    for o in os.environ.get(
+        "ALLOW_ORIGINS", "http://localhost:5173,http://localhost:3000"
+    ).split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOW_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -100,7 +109,7 @@ async def get_agent(codename: str):
     """特定エージェントの詳細"""
     agent = agent_manager.get(codename)
     if not agent:
-        return {"error": f"Agent '{codename}' not found"}
+        raise HTTPException(status_code=404, detail=f"Agent '{codename}' not found")
     return {**agent, "status": agent_manager.get_status(codename)}
 
 
@@ -151,7 +160,7 @@ async def list_tasks():
 async def get_task(task_id: str):
     task = task_manager.get(task_id)
     if not task:
-        return {"error": f"Task '{task_id}' not found"}
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
     return task.to_dict()
 
 
@@ -175,8 +184,22 @@ async def get_goal(goal_id: str):
     """特定ゴールの詳細"""
     goal = goal_manager.get(goal_id)
     if not goal:
-        return {"error": f"Goal '{goal_id}' not found"}
+        raise HTTPException(status_code=404, detail=f"Goal '{goal_id}' not found")
     return goal.to_dict()
+
+
+@app.get("/goals/{goal_id}/report")
+async def get_goal_report(goal_id: str):
+    """ゴールの達成判定レポートファイルを返す"""
+    goal = goal_manager.get(goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail=f"Goal '{goal_id}' not found")
+    if not goal.report_path:
+        raise HTTPException(status_code=404, detail=f"Goal '{goal_id}' has no report yet")
+    report_file = Path(goal.report_path)
+    if not report_file.exists():
+        raise HTTPException(status_code=404, detail=f"Report file not found: {goal.report_path}")
+    return FileResponse(report_file, media_type="text/plain; charset=utf-8")
 
 
 @app.post("/goals/reload")
@@ -191,15 +214,15 @@ async def check_goal_endpoint(goal_id: str):
     """指定ゴールの達成判定を実行し、レポートを生成する"""
     goal = goal_manager.get(goal_id)
     if not goal:
-        return {"error": f"Goal '{goal_id}' not found"}
+        raise HTTPException(status_code=404, detail=f"Goal '{goal_id}' not found")
 
     goal_manager.update_status(goal_id, GoalStatus.IN_PROGRESS)
     result = await check_goal(goal, _OUTPUT_DIR)
 
     if result.achieved:
-        goal_manager.update_status(goal_id, GoalStatus.COMPLETED)
+        goal_manager.update_status(goal_id, GoalStatus.COMPLETED, report_path=result.report_path)
     else:
-        goal_manager.update_status(goal_id, GoalStatus.PENDING)
+        goal_manager.update_status(goal_id, GoalStatus.PENDING, report_path=result.report_path)
 
     await ws_manager.broadcast({
         "type": "goal_checked",
@@ -261,7 +284,7 @@ async def run_react(agent_codename: str, request: ReactRequest):
     """指定エージェントにReActループでゴールを自律達成させる"""
     agent = agent_manager.get(agent_codename)
     if not agent:
-        return {"error": f"Agent '{agent_codename}' not found"}
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_codename}' not found")
 
     personality = agent.get("personality", f"あなたは{agent_codename}です。")
     react_agent = ReActAgent(

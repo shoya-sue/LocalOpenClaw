@@ -21,9 +21,14 @@ export default function App() {
 
   const wsRef = useRef(null);
 
-  // アクティビティフィードに追記
+  const MAX_ACTIVITIES = 100;
+
+  // アクティビティフィードに追記（最新100件を保持）
   const addActivity = (activity) => {
-    setActivities(prev => [...prev, { ...activity, ts: Date.now() }]);
+    setActivities(prev => {
+      const next = [...prev, { ...activity, ts: Date.now() }];
+      return next.length > MAX_ACTIVITIES ? next.slice(next.length - MAX_ACTIVITIES) : next;
+    });
   };
 
   // バックエンドのヘルスチェックとエージェント一覧取得

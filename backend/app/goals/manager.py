@@ -40,6 +40,7 @@ class Goal:
     cycles_done: int = 0
     completed_at: Optional[str] = None
     error: str = ""
+    report_path: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -54,6 +55,7 @@ class Goal:
             "cycles_done": self.cycles_done,
             "completed_at": self.completed_at,
             "error": self.error,
+            "report_path": self.report_path,
         }
 
 
@@ -112,11 +114,13 @@ class GoalManager:
     def pending_goals(self) -> list[Goal]:
         return [g for g in self._goals.values() if g.status == GoalStatus.PENDING]
 
-    def update_status(self, goal_id: str, status: GoalStatus, error: str = "") -> None:
+    def update_status(self, goal_id: str, status: GoalStatus, error: str = "", report_path: str = "") -> None:
         goal = self._goals.get(goal_id)
         if goal:
             goal.status = status
             goal.error = error
+            if report_path:
+                goal.report_path = report_path
 
     def increment_cycle(self, goal_id: str) -> int:
         """サイクルカウントをインクリメントし、現在のカウントを返す"""
