@@ -8,17 +8,30 @@ from typing import AsyncGenerator
 import httpx
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:1.7b")
 # タスク実行が長くなる場合に備えてタイムアウトを大きめに設定
 _TIMEOUT = 180
 
 # qwen3系など思考モード（CoT）対応モデルではthinkingを無効化してレスポンスを高速化
 _DISABLE_THINKING = os.getenv("DISABLE_THINKING", "true").lower() != "false"
 
+# コンテキストウィンドウサイズ（トークン数）。メモリ消費に直結する
+_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "2048"))
+
+# LLMに渡すテキストの最大文字数（超えたら末尾を切り捨て）
+_CONTEXT_MAX_CHARS = int(os.getenv("CONTEXT_MAX_CHARS", "3000"))
+
 
 def _strip_thinking(text: str) -> str:
     """<think>...</think> ブロックを除去（思考モードの出力クリーニング）"""
     return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
+
+def _trim_content(text: str, max_chars: int = _CONTEXT_MAX_CHARS) -> str:
+    """テキストを最大文字数に切り詰める。超えた場合は末尾を省略記号で置換"""
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "\n…（内容が長いため省略）"
 
 
 async def stream_chat(
@@ -30,12 +43,16 @@ async def stream_chat(
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
+            {"role": "system", "content": _trim_content(system_prompt)},
+            {"role": "user", "content": _trim_content(user_message)},
         ],
         "stream": True,
         # 思考モード（CoT）を無効化：qwen3系モデルの高速化
         "think": not _DISABLE_THINKING,
+        "options": {
+            # コンテキストウィンドウ上限。小さいほどVRAM/RAMを節約できる
+            "num_ctx": _NUM_CTX,
+        },
     }
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         async with client.stream("POST", f"{OLLAMA_BASE_URL}/api/chat", json=payload) as resp:

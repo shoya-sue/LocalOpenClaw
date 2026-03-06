@@ -1,0 +1,29 @@
+goals:
+  - id: investigate_performance
+    description: "APIレスポンスの遅延原因を特定し、改善案を output/performance_report.md に保存する"
+    success_criteria: "output/performance_report.md が存在し、内容に数値または具体的な改善案が含まれる"
+    max_cycles: 3
+    check_file: "performance_report.md"
+    check_keywords:
+      - "改善"
+      - "遅延"
+      - "ミリ秒"
+    min_chars: 100
+
+  - id: create_knowledge_report
+    description: "data/ 配下の情報から有益な知識レポートを output/knowledge_report.md に作成する"
+    success_criteria: "output/knowledge_report.md が存在し、200文字以上の内容がある"
+    max_cycles: 3
+    check_file: "knowledge_report.md"
+    check_keywords: []
+    min_chars: 200
+
+  - id: create_project_proposal
+    description: "AI同士の協働で短期プロジェクトの提案書を output/project_proposal.md に作成する"
+    success_criteria: "output/project_proposal.md が存在し、プロジェクト名・目標・担当が含まれる"
+    max_cycles: 3
+    check_file: "project_proposal.md"
+    check_keywords:
+      - "プロジェクト"
+      - "目標"
+    min_chars: 150

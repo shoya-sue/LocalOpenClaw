@@ -19,7 +19,10 @@ from watchdog.observers import Observer
 
 from app.agents.manager import AgentManager
 from app.agents.memory import append_memory, list_memory_files, read_memory, write_memory
+from app.agents.react import ReActAgent
 from app.autonomous import AutonomousLoop
+from app.goals.checker import check_goal
+from app.goals.manager import GoalManager, GoalStatus
 from app.llm.ollama import OLLAMA_BASE_URL, OLLAMA_MODEL, stream_chat
 from app.orchestrator import Orchestrator
 from app.tasks.manager import TaskManager
@@ -43,8 +46,13 @@ ws_manager = ConnectionManager()
 agent_manager = AgentManager()
 task_manager = TaskManager()
 orchestrator = Orchestrator(agent_manager, task_manager, ws_manager)
+goal_manager = GoalManager()
 
 _AUTONOMOUS_INTERVAL = int(os.environ.get("AUTONOMOUS_INTERVAL", "180"))
+# 明示的に有効化しない限り自律ループは起動しない（CPU高負荷防止）
+_AUTONOMOUS_ENABLED = os.environ.get("AUTONOMOUS_ENABLED", "false").lower() == "true"
+# Watchdogも明示的に有効化しないと起動しない
+_WATCHDOG_ENABLED = os.environ.get("WATCHDOG_ENABLED", "false").lower() == "true"
 _OUTPUT_DIR = Path(os.environ.get("DATA_DIR", "/data")) / "output"
 autonomous_loop = AutonomousLoop(orchestrator, ws_manager, _OUTPUT_DIR, _AUTONOMOUS_INTERVAL)
 
@@ -153,6 +161,65 @@ async def list_agent_tasks(codename: str):
 
 
 # ==============================
+# ゴール管理
+# ==============================
+
+@app.get("/goals")
+async def list_goals():
+    """全ゴール一覧（状態付き）"""
+    return {"goals": goal_manager.list_all()}
+
+
+@app.get("/goals/{goal_id}")
+async def get_goal(goal_id: str):
+    """特定ゴールの詳細"""
+    goal = goal_manager.get(goal_id)
+    if not goal:
+        return {"error": f"Goal '{goal_id}' not found"}
+    return goal.to_dict()
+
+
+@app.post("/goals/reload")
+async def reload_goals():
+    """goals.yaml を再読み込み"""
+    goal_manager.load()
+    return {"reloaded": [g["id"] for g in goal_manager.list_all()]}
+
+
+@app.post("/goals/{goal_id}/check")
+async def check_goal_endpoint(goal_id: str):
+    """指定ゴールの達成判定を実行し、レポートを生成する"""
+    goal = goal_manager.get(goal_id)
+    if not goal:
+        return {"error": f"Goal '{goal_id}' not found"}
+
+    goal_manager.update_status(goal_id, GoalStatus.IN_PROGRESS)
+    result = await check_goal(goal, _OUTPUT_DIR)
+
+    if result.achieved:
+        goal_manager.update_status(goal_id, GoalStatus.COMPLETED)
+    else:
+        goal_manager.update_status(goal_id, GoalStatus.PENDING)
+
+    await ws_manager.broadcast({
+        "type": "goal_checked",
+        "goal_id": goal_id,
+        "achieved": result.achieved,
+        "static_passed": result.static_passed,
+        "llm_answer": result.details.get("llm_answer", "SKIP"),
+        "report_path": result.report_path,
+    })
+    return {
+        "goal_id": goal_id,
+        "achieved": result.achieved,
+        "static_passed": result.static_passed,
+        "llm_passed": result.llm_passed,
+        "details": result.details,
+        "report_path": result.report_path,
+    }
+
+
+# ==============================
 # チャット
 # ==============================
 
@@ -182,6 +249,29 @@ async def orchestrate(message: str):
 
 class WebhookPayload(BaseModel):
     message: str
+
+
+class ReactRequest(BaseModel):
+    goal: str
+    max_steps: int = 5
+
+
+@app.post("/react/{agent_codename}")
+async def run_react(agent_codename: str, request: ReactRequest):
+    """指定エージェントにReActループでゴールを自律達成させる"""
+    agent = agent_manager.get(agent_codename)
+    if not agent:
+        return {"error": f"Agent '{agent_codename}' not found"}
+
+    personality = agent.get("personality", f"あなたは{agent_codename}です。")
+    react_agent = ReActAgent(
+        codename=agent_codename,
+        personality=personality,
+        ws_manager=ws_manager,
+        max_steps=request.max_steps,
+    )
+    result = await react_agent.run(request.goal)
+    return result.to_dict()
 
 
 @app.post("/webhook")
@@ -236,25 +326,33 @@ class _DataDirHandler(FileSystemEventHandler):
 @app.on_event("startup")
 async def _startup():
     """アプリ起動時に watchdog と自律ループを開始する"""
-    # docker-compose で ./data:/data にマウントされているため /data を優先
     data_dir = Path(os.environ.get("DATA_DIR", "/data"))
     data_dir.mkdir(parents=True, exist_ok=True)
 
-    loop = asyncio.get_event_loop()
-    handler = _DataDirHandler(loop, orchestrator)
-    observer = Observer()
-    observer.schedule(handler, str(data_dir), recursive=False)
-    observer.start()
-    app.state.watchdog = observer
-    logger.info("watchdog: data/ ディレクトリの監視を開始しました")
+    # WATCHDOG_ENABLED=true のときのみ起動（デフォルト無効でCPU節約）
+    if _WATCHDOG_ENABLED:
+        loop = asyncio.get_event_loop()
+        handler = _DataDirHandler(loop, orchestrator)
+        observer = Observer()
+        observer.schedule(handler, str(data_dir), recursive=False)
+        observer.start()
+        app.state.watchdog = observer
+        logger.info("watchdog: data/ ディレクトリの監視を開始しました")
+    else:
+        logger.info("watchdog: 無効（WATCHDOG_ENABLED=false）")
 
-    autonomous_loop.start()
+    # AUTONOMOUS_ENABLED=true のときのみ起動（デフォルト無効でCPU節約）
+    if _AUTONOMOUS_ENABLED:
+        autonomous_loop.start()
+    else:
+        logger.info("autonomous: 無効（AUTONOMOUS_ENABLED=false）")
 
 
 @app.on_event("shutdown")
 async def _shutdown():
     """アプリ終了時に watchdog と自律ループを停止する"""
-    autonomous_loop.stop()
+    if _AUTONOMOUS_ENABLED:
+        autonomous_loop.stop()
 
     observer: Observer | None = getattr(app.state, "watchdog", None)
     if observer:

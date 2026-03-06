@@ -2,10 +2,12 @@
 Leaderエージェントがチームをオーケストレーションするロジック
 
 フロー:
-  ユーザーメッセージ → Leader分析 → タスク割り当て → 各エージェント実行 → Leader統合 → 最終回答
+  ユーザーメッセージ → Leader分析 → タスク割り当て → 各エージェント実行（前の結果を次へ渡す）→ Leader統合 → 最終回答
 """
 
 import json
+import logging
+import os
 import re
 from typing import Optional
 
@@ -13,6 +15,11 @@ from app.agents.manager import AgentManager, AgentStatus
 from app.llm.ollama import chat_complete
 from app.tasks.manager import TaskManager, TaskStatus
 from app.ws.manager import ConnectionManager
+
+logger = logging.getLogger("uvicorn.error")
+
+# フィードバックとして渡す前エージェント結果の最大文字数（CONTEXT_MAX_CHARSの半分）
+_FEEDBACK_MAX_CHARS = int(os.getenv("CONTEXT_MAX_CHARS", "3000")) // 2
 
 # Leaderが受け取るオーケストレーション指示テンプレート
 _ORCHESTRATION_SYSTEM = """\
@@ -38,6 +45,15 @@ _ORCHESTRATION_SYSTEM = """\
   "tasks": [],
   "direct_response": "ここに回答を書く"
 }}
+"""
+
+# 前エージェントの結果を次エージェントに渡すシステムプロンプト追記テンプレート
+_FEEDBACK_CONTEXT_TEMPLATE = """\
+
+【前のエージェントからの引き継ぎ情報】
+{feedback}
+
+上記の情報を参考にしながら、以下の自分のタスクに取り組んでください。
 """
 
 # Leaderが各エージェント報告を統合するプロンプト
@@ -115,7 +131,9 @@ class Orchestrator:
         await self._set_status("leader", AgentStatus.IDLE, "待命中")
 
         # ④ 各エージェントがタスクを実行（直列）
+        # 前エージェントの結果を次エージェントへフィードバックとして渡す
         results: dict[str, str] = {}
+        previous_observations: list[str] = []  # 前エージェントの結果蓄積
         for task in created_tasks:
             agent_data = self.agents.get(task.assigned_to)
             if not agent_data:
@@ -130,8 +148,34 @@ class Orchestrator:
             })
 
             agent_system = agent_data.get("personality", f"あなたは{task.assigned_to}です。")
+
+            # 前エージェントの結果があればシステムプロンプトに追記してフィードバック
+            if previous_observations:
+                feedback_text = "\n---\n".join(previous_observations)
+                # FEEDBACK_MAX_CHARS を超えないよう末尾から切り取る
+                if len(feedback_text) > _FEEDBACK_MAX_CHARS:
+                    feedback_text = "…（省略）\n" + feedback_text[-_FEEDBACK_MAX_CHARS:]
+                agent_system = agent_system + _FEEDBACK_CONTEXT_TEMPLATE.format(
+                    feedback=feedback_text
+                )
+                from_agents = list(results.keys())
+                logger.info(
+                    "orchestrator: context_handoff %s → %s (%d文字)",
+                    from_agents,
+                    task.assigned_to,
+                    len(feedback_text),
+                )
+                await self.ws.broadcast({
+                    "type": "context_handoff",
+                    "to_agent": task.assigned_to,
+                    "from_agents": from_agents,
+                    "feedback_chars": len(feedback_text),
+                })
+
             result = await chat_complete(agent_system, task.description)
             results[task.assigned_to] = result
+            # 次エージェントへ渡す観察結果を蓄積（エージェント名付き）
+            previous_observations.append(f"[{task.assigned_to}の結果]\n{result}")
 
             self.tasks.update_status(task.id, TaskStatus.DONE, result)
             await self._set_status(task.assigned_to, AgentStatus.IDLE, "作業完了")

@@ -9,12 +9,17 @@
 
 import asyncio
 import logging
+import os
 import random
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from app.agents.react import ReActAgent
 from app.llm.ollama import chat_complete
+
+# REACT_MODE=true の場合、自律ループでReActエンジンを使用する
+REACT_MODE = os.getenv("REACT_MODE", "false").lower() == "true"
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -36,6 +41,15 @@ TRIGGER_ACTIONS: dict[str, tuple[str, str]] = {
     "成果物作成": ("engineer",   "議論の内容を元に具体的な成果物を作成してください"),
     "次フェーズ": ("leader",     "現在の成果を踏まえて次のフェーズのテーマを決めてください"),
 }
+
+# ReActモード用のゴールリスト（具体的な調査・成果物作成ゴール）
+REACT_GOALS = [
+    "data/ ディレクトリの内容を調査して、現在のLocalOpenClawシステムの状態をまとめたレポートをoutput/system_report.md に作成してください。",
+    "data/ 配下のファイルを調査して、AIエージェントの改善点を特定し、output/improvement_report.md に提案レポートを作成してください。",
+    "data/ 配下の情報を元に、AI同士の協働で生み出せる新しい成果物のアイデアをoutput/ideas.md に書き出してください。",
+    "data/ 配下のファイルを調査して、有益な知識・情報をoutput/knowledge_report.md にまとめてください。",
+    "data/ 配下の情報を元に、短期プロジェクトの提案書をoutput/project_proposal.md に作成してください。",
+]
 
 # Leaderが自律的に選ぶ議題リスト（ランダムローテーション）
 AUTONOMOUS_THEMES = [
@@ -104,22 +118,116 @@ class AutonomousLoop:
         await asyncio.sleep(10)
         while self._running:
             self._cycle += 1
-            theme = AUTONOMOUS_THEMES[(self._cycle - 1) % len(AUTONOMOUS_THEMES)]
-            logger.info("autonomous: サイクル %d 開始 — テーマ: %s", self._cycle, theme[:40])
 
-            await self._ws.broadcast({
-                "type": "autonomous_cycle_start",
-                "cycle": self._cycle,
-                "theme": theme,
-            })
+            # REACT_MODE時はReActエンジンで自律調査・成果物作成を実行
+            if REACT_MODE:
+                try:
+                    await self._react_cycle()
+                except Exception as exc:
+                    logger.warning("autonomous[react]: サイクル %d 失敗: %s", self._cycle, exc)
+            else:
+                theme = AUTONOMOUS_THEMES[(self._cycle - 1) % len(AUTONOMOUS_THEMES)]
+                logger.info("autonomous: サイクル %d 開始 — テーマ: %s", self._cycle, theme[:40])
 
-            try:
-                result = await self._orch.handle(theme)
-                await self._process_result(result, theme)
-            except Exception as exc:
-                logger.warning("autonomous: サイクル %d 失敗: %s", self._cycle, exc)
+                await self._ws.broadcast({
+                    "type": "autonomous_cycle_start",
+                    "cycle": self._cycle,
+                    "theme": theme,
+                })
+
+                try:
+                    result = await self._orch.handle(theme)
+                    await self._process_result(result, theme)
+                except Exception as exc:
+                    logger.warning("autonomous: サイクル %d 失敗: %s", self._cycle, exc)
 
             await asyncio.sleep(self._interval)
+
+    # ==============================
+    # ReActモード: エージェントが自律的にゴールを達成
+    # ==============================
+
+    async def _react_cycle(self):
+        """ReActモードの1サイクル: エージェントがゴール達成まで自律的に調査・実行"""
+        goal = REACT_GOALS[(self._cycle - 1) % len(REACT_GOALS)]
+
+        # detective → researcher → engineer の順でローテーション（役割に応じた調査）
+        react_agents = ["detective", "researcher", "engineer"]
+        agent_code = react_agents[(self._cycle - 1) % len(react_agents)]
+        agent_data = self._orch.agents.get(agent_code)
+        if not agent_data:
+            # 指定エージェントが未定義の場合はleaderを使用
+            agent_code = "leader"
+            agent_data = self._orch.agents.get(agent_code) or {}
+
+        personality = agent_data.get("personality", f"あなたは{agent_code}です。")
+        logger.info("autonomous[react]: サイクル %d — agent=%s goal=%s", self._cycle, agent_code, goal[:40])
+
+        await self._ws.broadcast({
+            "type": "autonomous_cycle_start",
+            "cycle": self._cycle,
+            "mode": "react",
+            "agent": agent_code,
+            "goal": goal,
+        })
+
+        react_agent = ReActAgent(
+            codename=agent_code,
+            personality=personality,
+            ws_manager=self._ws,
+        )
+        result = await react_agent.run(goal)
+        await self._save_react_artifact(goal, result)
+
+        await self._ws.broadcast({
+            "type": "autonomous_cycle_done",
+            "cycle": self._cycle,
+            "mode": "react",
+            "success": result.success,
+            "steps_taken": len(result.steps),
+        })
+
+    async def _save_react_artifact(self, goal: str, result) -> None:
+        """ReActの実行結果をMarkdownファイルとして保存"""
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filepath = self._output_dir / f"react_{self._cycle:03d}_{timestamp}.md"
+
+        lines = [
+            f"# ReActサイクル {self._cycle} — {timestamp}",
+            "",
+            "## ゴール",
+            goal,
+            "",
+            f"## 結果（{len(result.steps)}ステップ）",
+            f"**成功**: {'✓' if result.success else '✗'}",
+            "",
+            result.final_result,
+            "",
+            "## ステップ詳細",
+            "",
+        ]
+
+        for step in result.steps:
+            lines += [
+                f"### ステップ {step.step}",
+                f"**Thought**: {step.thought}",
+                f"**Action**: `{step.action}`",
+                f"**Observation**: {step.observation[:500]}",
+                "",
+            ]
+
+        if result.error:
+            lines += ["## エラー", result.error, ""]
+
+        filepath.write_text("\n".join(lines), encoding="utf-8")
+        logger.info("autonomous[react]: 成果物を保存 → %s", filepath)
+        await self._ws.broadcast({
+            "type": "autonomous_artifact",
+            "cycle": self._cycle,
+            "mode": "react",
+            "path": str(filepath),
+        })
 
     # ==============================
     # 結果処理: トリガーワード検出 → チェーン実行 → 成果物保存

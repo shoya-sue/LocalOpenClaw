@@ -12,8 +12,16 @@ services:
       # モデルデータを永続化（再起動後も再ダウンロード不要）
       - ollama_data:/root/.ollama
     environment:
-      - OLLAMA_KEEP_ALIVE=24h     # モデルをメモリに保持する時間
-      - OLLAMA_NUM_PARALLEL=2     # 並列リクエスト数（マルチエージェント用）
+      - OLLAMA_KEEP_ALIVE=10m    # アイドル後10分でモデルをアンロード（メモリ節約）
+      - OLLAMA_NUM_PARALLEL=1    # 並列リクエストを1に制限（省メモリ）
+      - OLLAMA_MAX_LOADED_MODELS=1  # 同時ロードモデル数を1に制限
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'           # CPU使用上限: 2コア
+          memory: 4G            # メモリ上限: 4GB
+        reservations:
+          memory: 512M          # 最低確保メモリ
     restart: unless-stopped
     # Apple Silicon: Metal GPU加速が自動有効化される
 
@@ -28,6 +36,11 @@ services:
       - "8000:8000"
     volumes:
       - chromadb_data:/chroma/chroma
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
     restart: unless-stopped
 
   # ==============================
@@ -52,6 +65,23 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:1.7b}
       - AGENT_MEMORY_PATH=/workspace
+      # LLMコンテキストウィンドウ上限（トークン数）。大きいほどメモリ消費増
+      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-2048}
+      # メモリコンテキストとして渡す最大文字数
+      - CONTEXT_MAX_CHARS=${CONTEXT_MAX_CHARS:-3000}
+      # ReActモード: true=ReActエンジンで自律調査、false=従来のオーケストレーション
+      - REACT_MODE=${REACT_MODE:-false}
+      # 自律ループ: デフォルト無効（CPU高負荷防止）。true にすると定期自律実行
+      - AUTONOMOUS_ENABLED=${AUTONOMOUS_ENABLED:-false}
+      # Watchdog: デフォルト無効（CPU高負荷防止）。true にするとdata/変更で自動起動
+      - WATCHDOG_ENABLED=${WATCHDOG_ENABLED:-false}
+      # ゴール定義ファイルパス
+      - GOALS_CONFIG=/app/config/goals.yaml
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
     depends_on:
       - chromadb
       - ollama
