@@ -128,7 +128,24 @@ class Orchestrator:
             # JSON抽出失敗 → Leaderの出力をそのまま直接回答として返す
             plan = {"tasks": [], "direct_response": plan_raw}
 
-        # ② 直接回答の場合
+        # ② 動画コンテンツ関連キーワードがある場合は直接回答を強制上書き
+        # leaderのJSON失敗・誤判断に関わらず全5エージェントにタスクを割り当てる
+        _VIDEO_KEYWORDS = ("動画", "コンテンツ", "台本", "YouTube", "TikTok", "Instagram", "60秒", "縦型", "Shorts", "Reels")
+        if not plan.get("tasks") and any(kw in message for kw in _VIDEO_KEYWORDS):
+            logger.info("orchestrator: leader直接回答を検出したが動画キーワードあり → 全エージェントにフォールバック割り当て")
+            plan = {
+                "reasoning": "動画コンテンツ制作のため全エージェントを起動（フォールバック）",
+                "tasks": [
+                    {"agent": "detective", "task": "SNSトレンドと視聴者ニーズを具体的な数字で調査"},
+                    {"agent": "researcher", "task": "動画構成と差別化ポイントを時間軸で設計"},
+                    {"agent": "sales", "task": "フック文3案・CTA・ハッシュタグ10個を提案"},
+                    {"agent": "secretary", "task": "60秒縦型動画の秒単位台本を作成"},
+                    {"agent": "engineer", "task": "動画制作用JSON仕様書を出力"},
+                ],
+                "summary_needed": True,
+            }
+
+        # ③ 直接回答の場合（動画キーワードなし）
         if not plan.get("tasks"):
             await self._set_status("leader", AgentStatus.IDLE, "待命中")
             return {
@@ -138,7 +155,7 @@ class Orchestrator:
                 "tasks": [],
             }
 
-        # ③ タスク作成 & WebSocket通知
+        # ④ タスク作成 & WebSocket通知
         created_tasks = []
         for spec in plan["tasks"]:
             agent_code = spec.get("agent")
