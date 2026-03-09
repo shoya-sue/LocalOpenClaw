@@ -46,25 +46,28 @@ _SCRIPT_INSTRUCTION = (
 )
 
 # JSON出力指示：動画制作ツール用の完全スキーマ（resolution/aspect_ratio/scenes[]/bgm_cue含む）
+# 【重要】プレースホルダーをそのままコピーせず、上の引き継ぎ情報から内容を埋めること
 _JSON_INSTRUCTION = (
-    "動画コンテンツの仕様を以下の完全なJSONスキーマで出力してください。必ず ```json コードブロックで囲むこと。\n\n"
+    "上の引き継ぎ情報（台本・トレンド・提案）を使って、動画コンテンツの仕様を以下のJSONスキーマで出力してください。\n"
+    "【重要】各フィールドは動画テーマに合わせた具体的な内容で埋めること。プレースホルダーをそのまま出力しない。\n"
+    "必ず ```json コードブロックで囲むこと。\n\n"
     '{\n'
-    '  "title": "動画タイトル",\n'
+    '  "title": "（動画テーマに合った具体的なタイトル）",\n'
     '  "platform": "YouTube Shorts",\n'
     '  "resolution": "1080x1920",\n'
     '  "aspect_ratio": "9:16",\n'
     '  "duration_sec": 60,\n'
-    '  "target_audience": "ターゲット視聴者（具体的に）",\n'
-    '  "hook": "冒頭3秒の強いセリフ",\n'
+    '  "target_audience": "（ターゲット視聴者：年代・性別・悩みを具体的に）",\n'
+    '  "hook": "（冒頭0-5秒の視聴者を引き付けるセリフ。例：「まだ○○で損してるの？」）",\n'
     '  "scenes": [\n'
-    '    {"time": "0-5", "visual": "映像内容", "narration": "セリフ", "text_overlay": "テキスト", "bgm_cue": "BGMの雰囲気"},\n'
-    '    {"time": "5-20", "visual": "映像内容", "narration": "セリフ", "text_overlay": "テキスト", "bgm_cue": "BGMの雰囲気"},\n'
-    '    {"time": "20-40", "visual": "映像内容", "narration": "セリフ", "text_overlay": "テキスト", "bgm_cue": "BGMの雰囲気"},\n'
-    '    {"time": "40-55", "visual": "映像内容", "narration": "セリフ", "text_overlay": "テキスト", "bgm_cue": "BGMの雰囲気"},\n'
-    '    {"time": "55-60", "visual": "映像内容", "narration": "セリフ", "text_overlay": "テキスト", "bgm_cue": "BGMの雰囲気"}\n'
+    '    {"time": "0-5", "visual": "（映像の具体的な内容）", "narration": "（セリフ全文）", "text_overlay": "（画面テキスト）", "bgm_cue": "（BGMの雰囲気）"},\n'
+    '    {"time": "5-20", "visual": "（映像の具体的な内容）", "narration": "（セリフ全文）", "text_overlay": "（画面テキスト）", "bgm_cue": "（BGMの雰囲気）"},\n'
+    '    {"time": "20-40", "visual": "（映像の具体的な内容）", "narration": "（セリフ全文）", "text_overlay": "（画面テキスト）", "bgm_cue": "（BGMの雰囲気）"},\n'
+    '    {"time": "40-55", "visual": "（映像の具体的な内容）", "narration": "（セリフ全文）", "text_overlay": "（画面テキスト）", "bgm_cue": "（BGMの雰囲気）"},\n'
+    '    {"time": "55-60", "visual": "（チャンネル登録ボタンを映す）", "narration": "（CTAのセリフ）", "text_overlay": "チャンネル登録お願いします！", "bgm_cue": "フェードアウト"}\n'
     '  ],\n'
-    '  "cta": "チャンネル登録・いいねを促すCTAテキスト",\n'
-    '  "hashtags": ["#タグ1", "#タグ2", "#タグ3", "#タグ4", "#タグ5", "#タグ6", "#タグ7", "#タグ8", "#タグ9", "#タグ10"]\n'
+    '  "cta": "（視聴者への具体的なCTA文。例：「このチャンネルでは毎週○○情報を発信中！チャンネル登録して最新動画を見逃さないで！」）",\n'
+    '  "hashtags": ["#（テーマ関連タグ1）", "#（テーマ関連タグ2）", "#（テーマ関連タグ3）", "#（テーマ関連タグ4）", "#（テーマ関連タグ5）", "#（テーマ関連タグ6）", "#（テーマ関連タグ7）", "#（テーマ関連タグ8）", "#（テーマ関連タグ9）", "#（テーマ関連タグ10）"]\n'
     "}"
 )
 
@@ -162,6 +165,42 @@ AUTONOMOUS_THEMES = [
         "「1日5分でできるメンタルリセット法」をテーマにした60秒縦型動画（Instagram Reels向け）のコンテンツを作成してください。"
         "ストレスを抱えた20〜40代をターゲットに、科学的根拠のある方法を3つ紹介してください。"
         "researcherが心理学・神経科学の観点から手法を選定し、salesが共感を呼ぶ切り口を提案してください。"
+        "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
+    ),
+    (
+        "「筋トレ初心者が3ヶ月で変わる！自宅トレーニング3選」をテーマにした60秒縦型動画（YouTube Shorts向け）のコンテンツを作成してください。"
+        "道具なしでできる体幹・腕・脚のトレーニングを紹介し、before/after効果を強調してください。"
+        "detectiveが人気トレーニング動画のトレンドを調査し、secretaryが分かりやすい台本にまとめてください。"
+        "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
+    ),
+    (
+        "「英語が話せるようになる！1日10分の勉強法」をテーマにした60秒縦型動画（TikTok向け）のコンテンツを作成してください。"
+        "社会人の英語学習者をターゲットに、シャドーイング・音読・アプリ活用の3ステップを紹介してください。"
+        "researcherが効果的な学習法の研究を調査し、salesが「今すぐ始めたくなる」フック文を提案してください。"
+        "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
+    ),
+    (
+        "「部屋が変わると人生が変わる！ミニマリスト収納術3選」をテーマにした60秒縦型動画（Instagram Reels向け）のコンテンツを作成してください。"
+        "20〜30代の一人暮らしをターゲットに、クローゼット・キッチン・デスクの整理術を紹介してください。"
+        "detectiveがトレンドの収納インテリアを調査し、secretaryがビジュアル映えする台本を作成してください。"
+        "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
+    ),
+    (
+        "「睡眠の質を劇的に上げる！寝る前5分の習慣」をテーマにした60秒縦型動画（YouTube Shorts向け）のコンテンツを作成してください。"
+        "睡眠不足に悩む30〜40代をターゲットに、ストレッチ・スマホ断ち・アロマの3つの習慣を紹介してください。"
+        "researcherが睡眠科学の最新知見を調査し、salesが共感を呼ぶオープニングを提案してください。"
+        "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
+    ),
+    (
+        "「副業で月5万円！スキルゼロから始めるフリーランス入門」をテーマにした60秒縦型動画（TikTok向け）のコンテンツを作成してください。"
+        "会社員の副業初心者をターゲットに、ライティング・デザイン・動画編集の3つの始め方を紹介してください。"
+        "detectiveが副業トレンドと需要を調査し、salesが「今すぐ行動したくなる」CTAを提案してください。"
+        "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
+    ),
+    (
+        "「スキンケア迷子卒業！肌タイプ別の正しい洗顔方法」をテーマにした60秒縦型動画（Instagram Reels向け）のコンテンツを作成してください。"
+        "スキンケア初心者の20代女性をターゲットに、乾燥肌・脂性肌・混合肌別のケア方法を紹介してください。"
+        "researcherが皮膚科学の根拠を調査し、secretaryが視覚的に分かりやすい台本にまとめてください。"
         "『台本作成』で秒単位の台本を作り、『JSON出力』でフォーマットしてください。"
     ),
 ]
@@ -398,12 +437,12 @@ class AutonomousLoop:
         })
 
     def _detect_triggers(self, text: str) -> dict[str, tuple[str, str]]:
-        """テキストからトリガーワードを検出。最初に見つかった3件まで"""
+        """テキストからトリガーワードを検出。最初に見つかった5件まで"""
         found: dict[str, tuple[str, str]] = {}
         for word, action in TRIGGER_ACTIONS.items():
             if word in text and word not in found:
                 found[word] = action
-            if len(found) >= 3:
+            if len(found) >= 5:
                 break
         return found
 
@@ -431,11 +470,19 @@ class AutonomousLoop:
         system = agent_data.get("personality", f"あなたは{agent_code}です。")
 
         # コンテキスト構築: Leaderの統合回答 + 各エージェントの個別報告
+        # engineerには台本(secretary)を優先して多く渡す。他エージェントは600文字/件
         max_context_chars = int(os.getenv("CONTEXT_MAX_CHARS", "3000")) // 2
-        context_parts = [f"【Leaderの統合回答】\n{context[:300]}"]
+        per_agent_chars = 600
+        context_parts = [f"【Leaderの統合回答】\n{context[:400]}"]
         if agent_results:
-            for agent, text in agent_results.items():
-                context_parts.append(f"【{agent}の報告】\n{text[:300]}")
+            # secretaryの台本をengineerに優先して渡すため先頭に配置
+            priority_order = ["secretary", "sales", "researcher", "detective"]
+            ordered = sorted(
+                agent_results.items(),
+                key=lambda kv: priority_order.index(kv[0]) if kv[0] in priority_order else 99
+            )
+            for agent, text in ordered:
+                context_parts.append(f"【{agent}の報告】\n{text[:per_agent_chars]}")
         full_context = "\n\n".join(context_parts)
         if len(full_context) > max_context_chars:
             full_context = "…（省略）\n" + full_context[-max_context_chars:]

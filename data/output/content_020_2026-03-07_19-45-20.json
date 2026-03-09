@@ -1,0 +1,46 @@
+{
+  "title": "カフェ新オープン！ 暖かく居心地の良い空間で、あなたの時間を過ごしませんか？",
+  "platform": "YouTube Shorts",
+  "resolution": "1080x1920",
+  "aspect_ratio": "9:16",
+  "duration_sec": 60,
+  "target_audience": "20代後半～30代の女性、コーヒーやカフェを好む層",
+  "hook": "まだカフェで損してるの？\n\n新しいカフェがオープンしました！\n\nゆったりとした雰囲気で、リラックスできる空間です。\n\nこだわりのコーヒー、美味しいスイーツ、そして\n\nあなたのお気に入りの場所。\n\nぜひ一度、お立ち寄りください。\n\n[カフェの場所]  [営業時間]  [アクセス方法]  [SNSアカウント]",
+  "scenes": [
+    {
+      "time": "0-5",
+      "visual": "",
+      "narration": "",
+      "text_overlay": "",
+      "bgm_cue": ""
+    },
+    {
+      "time": "5-20",
+      "visual": "",
+      "narration": "",
+      "text_overlay": "",
+      "bgm_cue": ""
+    },
+    {
+      "time": "20-40",
+      "visual": "",
+      "narration": "",
+      "text_overlay": "",
+      "bgm_cue": ""
+    },
+    {
+      "time": "40-55",
+      "visual": "",
+      "narration": "",
+      "text_overlay": "",
+      "bgm_cue": ""
+    },
+    {
+      "time": "55-60",
+      "visual": "",
+      "narration": "",
+      "text_overlay": "",
+      "bgm_cue": ""
+    }
+  ]
+}

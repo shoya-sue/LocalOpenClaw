@@ -1,0 +1,97 @@
+{
+  "title": "Happy Day - Colorful Adventures",
+  "platform": "YouTube Shorts",
+  "resolution": "1080x1920",
+  "aspect_ratio": "9:16",
+  "duration_sec": 60,
+  "target_audience": "Kids (6-12 years old)",
+  "hook": "Get ready for a super fun day filled with exciting colors!",
+  "scenes": [
+    {
+      "time": "0:00-0:10",
+      "visual": "Fast-paced montage of bright, colorful toys – building blocks, crayons, balloons. Upbeat, playful music.",
+      "narration": "Hey, kids! It's a super bright and colorful day!",
+      "text_overlay": "Happy Day!",
+      "bgm_cue": "Energetic, cheerful background music starts"
+    },
+    {
+      "time": "0:10-0:20",
+      "visual": "Close-up of a child laughing while building with blocks.  Zoom out to show a group of kids playing.",
+      "narration": "We’re going to build amazing things!",
+      "text_overlay": "Build & Create!",
+      "bgm_cue": "Music becomes slightly more playful"
+    },
+    {
+      "time": "0:20-0:35",
+      "visual": "Quick cuts of kids drawing, painting, and making crafts.",
+      "narration": "Let’s draw, color, and make something awesome!",
+      "text_overlay": "Creative Time!",
+      "bgm_cue": "Music transitions to a slightly faster tempo"
+    },
+    {
+      "time": "0:35-0:50",
+      "visual": "A child holding a paintbrush and creating a colorful picture.",
+      "narration": "Painting is super fun!",
+      "text_overlay": "Paint Your Way!",
+      "bgm_cue": "Music brightens again"
+    },
+    {
+      "time": "0:50-1:05",
+      "visual": "A child laughing while making a colorful mosaic.",
+      "narration": "Let’s make a mosaic!",
+      "text_overlay": "Mosaic Magic!",
+      "bgm_cue": "Music becomes more whimsical"
+    },
+    {
+      "time": "1:05-1:20",
+      "visual": "Multiple children happily playing with different toys and art supplies.  Quick cuts.",
+      "narration": "We'll have lots of fun playing!",
+      "text_overlay": "Fun Time!",
+      "bgm_cue": "Music continues upbeat"
+    },
+    {
+      "time": "1:20-1:35",
+      "visual": "A child holding a colorful balloon, blowing it up.",
+      "narration": "Let’s make a balloon!",
+      "text_overlay": "Balloon Blast!",
+      "bgm_cue": "Music becomes more playful"
+    },
+    {
+      "time": "1:35-1:50",
+      "visual": "Kids using colorful glitter to decorate a balloon.",
+      "narration": "Glitter Time!",
+      "text_overlay": "Sparkle & Shine!",
+      "bgm_cue": "Music becomes a bit more energetic"
+    },
+    {
+      "time": "1:50-2:05",
+      "visual": "A child wearing colorful clothes, jumping and dancing.",
+      "narration": "Let's dance!",
+      "text_overlay": "Dance Time!",
+      "bgm_cue": "Music picks up speed and energy"
+    },
+    {
+      "time": "2:05-2:20",
+      "visual": "A montage of various activities – playing with bubbles, making slime, playing with crayons.",
+      "narration": "Let's have lots of fun!",
+      "text_overlay": "Happy Fun!",
+      "bgm_cue": "Music becomes more playful and energetic"
+    },
+    {
+      "time": "2:20-2:35",
+      "visual": "A screen showing the channel logo and social media handles.",
+      "narration": "Don’t forget to like and subscribe!",
+      "text_overlay": "Subscribe!",
+      "bgm_cue": "Music fades out"
+    }
+  ],
+  "cta": "Subscribe for more fun!",
+  "hashtags": [
+    "#KidsActivities",
+    "#FunTimes",
+    "#Colorful",
+    "#Play",
+    "#Creative",
+    "#HappyDay"
+  ]
+}

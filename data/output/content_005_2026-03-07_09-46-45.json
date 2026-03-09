@@ -1,0 +1,91 @@
+{
+  "title": "ワークショップ映像まとめ - AI活用",
+  "platform": "YouTube Shorts",
+  "resolution": "1080x1920",
+  "aspect_ratio": "9:16",
+  "duration_sec": 60,
+  "target_audience": "DIY初心者、テクノロジーに関心のある層",
+  "hook": "まだDIYで苦戦してる？ AIを活用すれば、もっと簡単！",
+  "scenes": [
+    {
+      "scene_number": 1,
+      "scene_title": "導入 (0-5秒)",
+      "visual": {
+        "shot_type": "Wide",
+        "duration": 5,
+        "description": "ワークショップの雰囲気を感じさせる、大きく映し出すセット。参加者の笑顔が見えること。",
+        "lighting": "自然光、柔らかい照明",
+        "color_correct": "全体的に暖色系の明るい色"
+      },
+      "narration": "AIが都市のあらゆる要素を最適化！ここでは、最新のDIYプロジェクトを例に、AIがどのように活用されているか、具体的な事例をご紹介します。",
+      "text_overlay": "AIが都市を最適化？最新のDIYプロジェクトの事例を公開！",
+      "bgm_cue": "ゆったりとした、テクノロジーと融合した音楽のBGM"
+    },
+    {
+      "scene_number": 2,
+      "scene_title": "事例1：DIYガーデニング",
+      "visual": {
+        "shot_type": "Medium",
+        "duration": 10,
+        "description": "AIが都市全体の気象データと芝生プランの情報を分析し、最適な芝生芝生配分量を計算。庭の生育に合わせた最適な環境を支援。",
+        "lighting": "自然光、柔らかい照明",
+        "color_correct": "グリーンと明るいブラウンの配色"
+      },
+      "narration": "AIは、地域の気象データ、土地の特性、植物の種類などを分析し、まるで庭師のアドバイスのように、庭の生育に最適な芝生芝生配分量を算出します。これにより、庭の美しさをより引き出すことができます。",
+      "text_overlay": "AIが庭の生育に合わせた最適な環境を支援！",
+      "bgm_cue": "少しだけアップテンポな音楽に変化"
+    },
+    {
+      "scene_number": 3,
+      "scene_title": "事例2：DIY内装リフォーム",
+      "visual": {
+        "shot_type": "Close-up",
+        "duration": 15,
+        "description": "AIが過去の建築図面、建物の材料、地域の建築基準などを分析し、最適な色合いやデザインを提案。リアルタイムで変化するデザインを提案。",
+        "lighting": "スポットライト、少し光の調整",
+        "color_correct": "落ち着いた色調、白とグレーのバランス"
+      },
+      "narration": "AIは、建物の構造や周辺環境を分析し、最も美しく、効率的なデザインを自動で提案します。デザイナーの負担を軽減し、創造性を刺激します。",
+      "text_overlay": "AIがデザインを提案！創造性を刺激する、効率的なリフォームの提案。",
+      "bgm_cue": "少し落ち着いた雰囲気の音楽に変化"
+    },
+    {
+      "scene_number": 4,
+      "scene_title": "事例3：DIY家具製作",
+      "visual": {
+        "shot_type": "Wide",
+        "duration": 8,
+        "description": "AIがユーザーの入力（家具のサイズ、形状、色など）に基づいて、最適な木材の材質、組み立て方、必要な工具を提案。",
+        "lighting": "自然光、明るい色",
+        "color_correct": "暖色系の明るい色"
+      },
+      "narration": "AIは、あなたの作る家具を、より簡単に、そして手軽に、実現できます。デザインのアイデア出しから、組み立てまで、スムーズな作業を実現します。",
+      "text_overlay": "AIが家具製作をサポート！デザインをスムーズに実現",
+      "bgm_cue": "軽快な音楽に変化"
+    },
+    {
+      "scene_number": 5,
+      "scene_title": "まとめ",
+      "visual": {
+        "shot_type": "Screen",
+        "duration": 10,
+        "description": "チャンネル登録、高評価のお願い、コメントの募集",
+        "lighting": "全体的に明るい色",
+        "color_correct": "明るい色"
+      },
+      "narration": "AIは、あなたのDIYライフをより楽しく、そして効率的に、サポートします。チャンネル登録、高評価、コメントの投稿をよろしくお願いいたします！",
+      "text_overlay": "チャンネル登録はこちら！高評価、コメントを忘れずに！",
+      "bgm_cue": "音楽フェードアウト"
+    }
+  ],
+  "cta": "チャンネル登録はこちら！",
+  "hashtags": [
+    "#DIY",
+    "#DIYインテリア",
+    "#DIY家具",
+    "#AI",
+    "#テクノロジー",
+    "#家づくり",
+    "#効率化"
+  ]
+}
